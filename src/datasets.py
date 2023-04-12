@@ -15,6 +15,7 @@ This python3 module implements all dataset-related functionality for this projec
 
 import sys
 
+from pprint import pformat
 from tqdm import tqdm
 import numpy as np
 import torch
@@ -93,6 +94,8 @@ class Dataset:
             root:           Dataset folder (downloads end up in there)
             edge_size:      Resize dataset images to edge_size x edge_size
         '''
+        # Save the dataset loaded
+        self.dataset = name
         # Check for dataset name, exit the app if incorrect dataset required
         if hasattr(datasets, name):
             dataset_cls = getattr(datasets, name)
@@ -129,7 +132,8 @@ class Dataset:
             classes:        Number of classes (np.arange(classes) are labels then)
             entries:        Number of data entries to generate
         '''
-
+        # Save the dataset loaded
+        self.dataset = 'Test/Dummy'
         with tqdm(total=3, desc='Creating dataset ...', ncols=100) as pbar:
             # Generate radom classes labels
             self.y = torch.randint(0, classes, (entries,)).to(self.device); pbar.update(1)
@@ -149,6 +153,8 @@ class Dataset:
             lower_bound:    Normalization lower bound
             upper_bound:    Normalization upper bound
         '''
+        # Save norm bounds in order to be displayd
+        self.normalized_lower, self.normalized_upper = lower_bound, upper_bound
         with torch.no_grad():
             # 1. Normalize into interval <0,1>
             self.X = self.X / (self.X.max() - self.X.min())
@@ -164,11 +170,6 @@ class Dataset:
     def obj_shape(self):
         '''Return shape of data objects'''
         return self.X.shape[1:]
-
-    @property
-    def num_classes(self):
-        '''How many classes are in dataset?'''
-        return len(self.classes)
 
     @property
     def test_X(self):
@@ -189,3 +190,24 @@ class Dataset:
     def eval_y(self):
         '''Obtain y data (labels) used for evaluation'''
         return self.y[self.dataset_split : ]
+
+    def _info_dict(self):
+        '''Obtain dictionary with information about self'''
+        return {
+            'Object shape': self.obj_shape,
+            'Objects training': self.dataset_split,
+            'Objects eval': len(self.X) - self.dataset_split,
+            'Objects total': len(self.X),
+            'Distinct classes': self.class_count,
+            'Object min value': self.X.min(),
+            'Object max value': self.X.max(),
+            'Classes': ', '.join(self.classes),
+            'Normalization upper bound': self.normalized_upper,
+            'Normalization lower bound': self.normalized_lower,
+            'Device': self.device,
+            'Dataset': self.dataset
+        }
+
+    def __repr__(self):
+        '''Return string representing of information about self'''
+        return pformat(self._info_dict(), width=120)
