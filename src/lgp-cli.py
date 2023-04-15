@@ -51,6 +51,11 @@ if __name__ == '__main__':
     # App flow
     parser.add_argument('--train', action='store_true', help='Perform training')
     parser.add_argument('--eval', action='store_true', help='Perform evaluation')
+    # Loading program could be tricky as loading neural network gets
+    # There are some fixed parameters which has to be considered:
+    #   1) hidden_registers (args.regs) shape - the saved program already has that
+    #       parameter defined, specifying it differently could bring breaking changes
+    #   solution: assert equality
     parser.add_argument('--load-program', type=str,
                         help='Provide path to pickled Program class instance')
     parser.add_argument('--save-program', type=str, default='programs',
@@ -75,6 +80,10 @@ if __name__ == '__main__':
                         help='Chance (in %) to incrementally increase instruction count of program')
     parser.add_argument('--mutation-p', type=int, default=25,
                         help='Chance of individual mutation in percents')
+    parser.add_argument('--mutate-reg', type=int, default=1,
+                        help='How many register values to mutate')
+    parser.add_argument('--mutate-inst', type=int, default=1,
+                        help='How many isntructions to mutate')
     parser.add_argument('--crossover-p', type=int, default=25,
                         help='Chance of crossover when creating new offspring')
     parser.add_argument('--elite', type=int, default=3,
@@ -83,9 +92,14 @@ if __name__ == '__main__':
                         help=('Choose from elite individuals to copy or crossover equally, '
                             'not according to their fitness')
     )
+    parser.add_argument('--regs', nargs='+', default=(42,),
+                         help='Shape of working registers (whatever dimensionality)')
     # Utility
     parser.add_argument('--debug', action='store_true',
                         help='Log debug information')
+
+    # TODO: Verbosity of outputs
+
 
     # Parse the arguments
     args = parser.parse_args()
@@ -103,6 +117,7 @@ if __name__ == '__main__':
         (f'Minimum number of instructions ({args.min_instr}) should be lower or equal to '
          f'maximum number of instructions ({args.max_instr})')
 
+
     ################################################################################
     #####                             Utilities                                #####
     ################################################################################
@@ -110,6 +125,7 @@ if __name__ == '__main__':
     # Configure logging
     logging.basicConfig(level=logging.DEBUG if args.debug else logging.INFO)
     
+
     ################################################################################
     #####                              Dataset                                 #####
     ################################################################################
@@ -119,6 +135,7 @@ if __name__ == '__main__':
                       data_split=args.data_split, normalize=args.normalize,
                       test=args.test_dataset)
     logging.debug(f'Dataset loaded with configuration:\n{dataset}')
+
 
     ################################################################################
     #####                          Loading program                             #####
@@ -130,20 +147,33 @@ if __name__ == '__main__':
     if args.load_program:
         with open(args.load_program, 'rb') as file:
             program = pickle.loads(file)
+
+            # Loaded program properties should comply with CLI options provded
+            assert list(program.hidden_regfiled.shape) == args.regs, \
+                (f'Loaded program\'s hidden register fiels is of shape {", ".join(program.hidden_regfiled.shape)} '
+                 f'while CLI option provided is {", ".join(args.regs)}. Shapes have to be the same!')
+
         logging.info(f'Program loaded from path {args.load_program} in configuration of:\n{program}')
+
 
     ################################################################################
     #####                            LGP training                              #####
     ################################################################################
+
     # If --train flag -> start training
     if args.train:
         # Disable gradient computation for faster results
         with torch.no_grad():
+            # This is getting out of hand - long var names, access properties ... but clarity is kept
             lgp = LGP(dataset, program, population=args.population, grow=args.grow_p, generations=args.gens,
                       min_inst=args.min_instr, max_inst=args.max_instr, fitness=args.fitness,
                       mutation_p=args.mutation_p, crossover_p=args.crossover_p, elite=args.elite,
-                      equal_elite=args.equal_elite)
+                      equal_elite=args.equal_elite, hidden_regfield=args.regs)
+
+            logging.debug(f'LGP object initialized in configuration of:\n{lgp}')
+
             lgp.fit(dataset.test_X, dataset.test_y)
+
 
     ################################################################################
     #####                           LGP evaluation                             #####

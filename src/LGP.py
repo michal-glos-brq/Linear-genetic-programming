@@ -10,6 +10,7 @@
 
 import numpy as np
 from tqdm import tqdm
+from pprint import pformat
 
 from program import Program
 
@@ -42,27 +43,37 @@ FITNESS = {
 class LGP:
     '''
     Linear Genetic Programming controll algorithm/object
+
+    important properties: (not mentioned in __init__ docstring, __init__ args with same names could differ, Achtung!)
+        population:         NumPy array of Program instances (the whole population)
+        population_bound:   Maximum number of individuals in population
+        elite_size:         Number of individuals consisting elite
+        hidden_reg_shape:   Shape of hidden registers
+        fitness_fn:         Function computing fitness
+        fitness:            Fitness ranking of individuals
+        evaluated:          Current population was evaluated nad fitness values are current
     '''
 
     def __init__(self, dataset, program, population=42, elite=3, equal_elite=False, 
                  generations=60, min_inst=1, max_inst=100, fitness='p',
-                 grow=25, mutation_p=25, crossover_p=25):
+                 grow=25, mutation_p=25, crossover_p=25, hidden_reg_shape=(42,)):
         '''
         Initialize LGP algorithm object
 
         @args:
-            population:     Upper population bound
-            elite:          Number of best individuals considered elite
-            equal_elite:    Do not weight elite individuals chances to procreate by fitness
-            generations:    For how many generations to evolve
-            program:        Program instance or None (Proto Program ... :D )
-            min_inst:       Minimum required lenght of program in instructions
-            max_inst:       Maximum required lenght of program in instructions
-            fitness:        Fitness function (choose from 'ce' and 'p'), see Program class
-            dataset:        Dataset instance
-            grow:           Incrementaly increase the lenght of program (in %)
-            mutation_p:     Mutation probability (in %)
-            crossover_p:    Crossover probability (in %)
+            population:         Upper population bound
+            elite:              Number of best individuals considered elite
+            equal_elite:        Do not weight elite individuals chances to procreate by fitness
+            generations:        For how many generations to evolve
+            program:            Program instance or None (Proto Program ... :D )
+            min_inst:           Minimum required lenght of program in instructions
+            max_inst:           Maximum required lenght of program in instructions
+            fitness:            Fitness function (choose from 'ce' and 'p'), see Program class
+            dataset:            Dataset instance
+            grow:               Incrementaly increase the lenght of program (in %)
+            mutation_p:         Mutation probability (in %)
+            crossover_p:        Crossover probability (in %)
+            hidden_reg_shape:    Shape of hidden register field
         '''
         # Save the configuration into properties
         self.population_bound = population          # Max population
@@ -75,6 +86,7 @@ class LGP:
         self.grow = grow / 100.                     # Probability (in %) for a program to grow (an instruction)
         self.min_inst = min_inst                    # Minimal number of Program instructions
         self.max_inst = max_inst                    # Maximal number of Program instructions
+        self.hidden_reg_shape = hidden_reg_shape    # Shape of hidden register field
 
         self.fitness_fn = FITNESS[fitness]          # Fitness code (string)
         self.fitness = []                           # Fitness values for each individual
@@ -99,7 +111,7 @@ class LGP:
     def spawn_individuals(self):
         '''Generate Program instances to meet the population criteria'''
         # How many individuals are missing from population
-        pop_missing = self.population_bound - self.actual_population
+        pop_missing = self.population_bound - len(self.actual_population)
         # Create new individuals
         self.population = np.append(self.population, [self.new_individual() for _ in range(pop_missing)])
         # Invalidate population evaluation, since new individuals were added 
@@ -110,24 +122,26 @@ class LGP:
     def new_individual(self):
         '''Create a new Program individual based on LGP object properties'''
         # If population was not evaluated, we do not have elite, generate individuals randomly
-        # Mutation not even considered, it's randomly generated at the first place
+        # Mutation not even considered because it's randomly generated at the first place
         if not self.evaluated:
-            return Program(self.max_inst, self.min_inst, self.obj_shape, self.classes)
+            return Program.creation(self.max_inst, self.min_inst, self.obj_shape,
+                                    self.classes, self.hidden_reg_shape)
 
         # If population was evaluated, let's take the elite and repopulate
         elite_pop, elite_fitness = self.elite
         # Use fitness values as probability distribution of individuals or use uniform distribution among elite if self.equal_elite
         elite_probs = (np.ones_like(elite_fitness) / len(elite_pop)) if self.equal_elite else (elite_fitness / elite_fitness.sum())
-        # Decide which actions to perform. If neither, program will be shrunk (it's already in the new population)
+        # Decide which actions to perform. If neither, program will be shrunk (it's already in the new population, so the new one gotta change a bit)
         crossover, mutate, grow = self.repopulation_probs >= np.random.random(3)
         
         ## Actual process of generating the new offspring begins here
         # Create new offspring either by crossover of 2 parents or by simple selection of elite individual
         if crossover:
             father, mother = np.random.choice(elite_pop, size=2, replace=False, p=elite_probs)
-            offspring = father + mother
+            offspring = Program.crossover(father, mother)
         else:
-            offspring = np.random.choice(elite_pop, p=elite_probs).copy()
+            parent = np.random.choice(elite_pop, p=elite_probs)
+            offspring = Program.transcription(parent)
         
         # Mutate if randomly chosen to
         if mutate:
@@ -205,15 +219,20 @@ class LGP:
         
 
     ################################################################################
-    #####                     Easy-access properties                           #####
+    #####                                Utils                                 #####
     ################################################################################
-
-    @property
-    def actual_population(self):
-        '''Return the number of Programs in population'''
-        return len(self.population)
 
     @property
     def elite(self):
         '''Return the array of elite individuals and theirs fitness'''
         return self.population[:self.elite_size], self.fitness[:self.elite_size]
+
+    def _info_dict(self):
+        '''Obtain information about Program instance in a dictionary'''
+        return {
+            
+        }
+
+    def __repr__(self):
+        '''String representation of program and it's instructions (developer friendly)'''
+        return pformat(self._info_dict, width=120)

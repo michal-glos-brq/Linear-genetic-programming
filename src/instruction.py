@@ -8,8 +8,10 @@
                            #@$%&     `---'   &%$@#
                            #######################
 
-import numpy as np
 import torch
+import numpy as np
+
+from pprint import pformat
 
 # Binary operations for use
 BINARY = [
@@ -67,6 +69,14 @@ class Instruction:
         # Randomly choose between binary and unary instruction type
         self._parity = np.random.randint(0, len(instruction_parity))
 
+    def mutate(self):
+        ''''''
+        pass
+
+    def copy(self, parent):
+        '''Create new instruction with provided parent'''
+        pass
+
     @property
     def parity(self):
         '''Obtain parity operation and operant counts for self._parity'''
@@ -110,18 +120,16 @@ class Instruction:
         result_register = getattr(self.program, self.operation_regs[-1])
         result_register[self.operation_idx[-1]] = result
 
-    def mutate(self):
-        '''
-        Mutate instruction. Instruction keeps the same parity but could change operation,
-        operands registers, operadns indices or result destination
-        '''
-        pass
+    ################################################################################
+    #####                                 Utils                                #####
+    ################################################################################
+
+    @property
+    def _info_dict(self):
+        '''Obtain a dictionary describing Instruction object instance (self)'''
+        return {}
 
     def __repr__(self):
         '''String representation of instruction and it's instructions (developer friendly)'''
-        pass
-
-    def __str__(self):
-        '''String representation of instruction and it's instructions (human friendly)'''
-        pass
+        return pformat(self._info_dict)
 

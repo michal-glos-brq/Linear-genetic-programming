@@ -8,11 +8,6 @@
                            #@$%&     `---'   &%$@#
                            #######################
 
-
-'''
-This python3 module implements all dataset-related functionality for this project
-'''
-
 import sys
 
 from pprint import pformat
@@ -22,6 +17,11 @@ import torch
 
 from torchvision import datasets
 from torchvision.transforms import PILToTensor
+
+
+################################################################################
+#####                Tensor transformation function factory                #####
+################################################################################
 
 def resizePIL(edge_size):
     '''
@@ -41,6 +41,10 @@ def resizePIL(edge_size):
     # Factory output
     return inner_fn
 
+
+################################################################################
+#####                           Dataset class                              #####
+################################################################################
 
 class Dataset:
     '''
@@ -84,6 +88,10 @@ class Dataset:
         # Apply equation to compute boundaries on self.data for training|eval data (choose min - limit|actual_size)
         self.dataset_split = int(data_split / 100. * self.X.shape[0])
 
+
+    ################################################################################
+    #####                       Data and labels preparing                      #####
+    ################################################################################
 
     def get_torch_dataset(self, name, root, edge_size):
         '''
@@ -160,6 +168,11 @@ class Dataset:
             self.X = self.X / (self.X.max() - self.X.min())
             # 2. Normalize into required interval span
             self.X = (self.X * (upper_bound - lower_bound)) + lower_bound
+
+
+    ################################################################################
+    #####                                Utils                                 #####
+    ################################################################################
 
     @property
     def class_count(self):
