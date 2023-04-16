@@ -25,7 +25,7 @@ from LGP import LGP
 if __name__ == '__main__':
 
     ################################################################################
-    #####                      Parsing arguments                               #####
+    #####                           Define arguments                           #####
     ################################################################################
 
     # Create the argument parser
@@ -51,7 +51,7 @@ if __name__ == '__main__':
     # App flow
     parser.add_argument('--train', action='store_true', help='Perform training')
     parser.add_argument('--eval', action='store_true', help='Perform evaluation')
-    # Loading program could be tricky as loading neural network gets
+    # Loading program could be tricky as loading a saved model gets
     # There are some fixed parameters which has to be considered:
     #   1) hidden_registers (args.regs) shape - the saved program already has that
     #       parameter defined, specifying it differently could bring breaking changes
@@ -80,12 +80,14 @@ if __name__ == '__main__':
                         help='Chance (in %) to incrementally increase instruction count of program')
     parser.add_argument('--mutation-p', type=int, default=25,
                         help='Chance of individual mutation in percents')
+    parser.add_argument('--crossover-p', type=int, default=25,
+                        help='Chance of crossover when creating new offspring')
+    parser.add_argument('--area-p', type=int, default=10,
+                        help='Probability (in %) of instruction working with tensor slice')
     parser.add_argument('--mutate-reg', type=int, default=1,
                         help='How many register values to mutate')
     parser.add_argument('--mutate-inst', type=int, default=1,
                         help='How many isntructions to mutate')
-    parser.add_argument('--crossover-p', type=int, default=25,
-                        help='Chance of crossover when creating new offspring')
     parser.add_argument('--elite', type=int, default=3,
                         help='Elite to be kept after purge/elimination')
     parser.add_argument('--equal-elite', action='store_true', 
@@ -94,12 +96,17 @@ if __name__ == '__main__':
     )
     parser.add_argument('--regs', nargs='+', default=(42,),
                          help='Shape of working registers (whatever dimensionality)')
+
     # Utility
     parser.add_argument('--debug', action='store_true',
                         help='Log debug information')
 
     # TODO: Verbosity of outputs
 
+
+    ################################################################################
+    #####                           Parse arguments                            #####
+    ################################################################################
 
     # Parse the arguments
     args = parser.parse_args()
@@ -109,14 +116,30 @@ if __name__ == '__main__':
         (f'Kept elite ({args.elite}) has to be lower then population ({args.population}) '
          f'and higher then 1 for eventuall crossovers.')
 
-    assert 0 <= args.mutation_p <= 100 and 0 <= args.crossover_p <= 100, \
-        (f'Mutation probability ({args.mutation_p} %) and crossover probability ({args.crossover_p} %)'
-         ' are in percents, therefore choose an integer from the interval of <0, 100>.')
+    assert 0 <= args.crossover_p <= 100, f'--crossover-p is a probability in %, hence value {args.crossover_p} is not valid'
+    assert 0 <= args.mutation_p <= 100, f'--mutation-p is a probability in %, hence value {args.mutation_p} is not valid'
+    assert 0 <= args.grow_p <= 100, f'--grow-p is a probability in %, hence value {args.grow_p} is not valid'
+    assert 0 <= args.area_p <= 100, f'--area-p is a probability in %, hence value {args.area_p} is not valid'
 
     assert args.min_instr <= args.max_instr, \
         (f'Minimum number of instructions ({args.min_instr}) should be lower or equal to '
          f'maximum number of instructions ({args.max_instr})')
 
+    # Well, this got out of hand ... :D
+    LGP_kwargs = {
+        'population': args.population,
+        'area_p': args.area_p,
+        'grow_p': args.grow_p,
+        'generations': args.gens,
+        'min_inst': args.min_instr,
+        'max_inst': args.max_instr,
+        'fitness': args.fitness,
+        'mutation_p': args.mutation_p,
+        'crossover_p': args.crossover_p,
+        'elite': args.elite,
+        'equal_elite': args.equal_elite,
+        'hidden_regfield': args.regs
+    }
 
     ################################################################################
     #####                             Utilities                                #####
@@ -124,7 +147,7 @@ if __name__ == '__main__':
 
     # Configure logging
     logging.basicConfig(level=logging.DEBUG if args.debug else logging.INFO)
-    
+
 
     ################################################################################
     #####                              Dataset                                 #####
@@ -165,10 +188,7 @@ if __name__ == '__main__':
         # Disable gradient computation for faster results
         with torch.no_grad():
             # This is getting out of hand - long var names, access properties ... but clarity is kept
-            lgp = LGP(dataset, program, population=args.population, grow=args.grow_p, generations=args.gens,
-                      min_inst=args.min_instr, max_inst=args.max_instr, fitness=args.fitness,
-                      mutation_p=args.mutation_p, crossover_p=args.crossover_p, elite=args.elite,
-                      equal_elite=args.equal_elite, hidden_regfield=args.regs)
+            lgp = LGP(dataset, program, **LGP_kwargs)
 
             logging.debug(f'LGP object initialized in configuration of:\n{lgp}')
 
@@ -179,7 +199,6 @@ if __name__ == '__main__':
     #####                           LGP evaluation                             #####
     ################################################################################
 
-    # TODO --v
     # If --eval flag - start evaluating
     if args.eval:
 

@@ -29,7 +29,7 @@ class Program:
         result_reg_init:    Initialization values of result vector memory
     '''
 
-    def __init__(self, max_instr, min_instr, obj_shape, classes, hidden_reg_shape):
+    def __init__(self, max_instr, min_instr, obj_shape, classes, hidden_reg_shape, area_p):
         '''
         Initialize the Program class, initialize register init values,
         initialize instructions
@@ -40,6 +40,7 @@ class Program:
             obj_shape:          Shape of objects to be classified
             classes:            Number of classes (Output register shape)
             hidden_reg_shape:   Shape of hidden register field
+            area_p:             Probablity of instruction to process a slice instead sing. val.
         '''
         # Define max and min lenght of program
         self.max_instr = max_instr
@@ -83,7 +84,7 @@ class Program:
 
         # Generate the shortest possible program randomly
         for _ in range(min_instr):
-            new_individual.instructions.append(Instruction(new_individual))
+            new_individual.instructions.append(Instruction.random(new_individual))
 
 
     @staticmethod

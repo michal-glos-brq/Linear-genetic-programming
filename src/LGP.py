@@ -26,10 +26,10 @@ def fitness_correctly_classified(y_pred, y_gt):
     # Return the percentage of correct predictions
     return (predictions.sum() / len(predictions)) * 100
 
-def fitness_cross_entropy(y_pred, y_gt):
-    '''Compute fitness based on classification cross-entropy'''
-    # TODO: Implement
-    pass
+# def fitness_cross_entropy(y_pred, y_gt):
+#     '''Compute fitness based on classification cross-entropy'''
+#     # TODO: Implement
+#     pass
 
 FITNESS = {
     'p': fitness_correctly_classified
@@ -55,8 +55,8 @@ class LGP:
     '''
 
     def __init__(self, dataset, program, population=42, elite=3, equal_elite=False, 
-                 generations=60, min_inst=1, max_inst=100, fitness='p',
-                 grow=25, mutation_p=25, crossover_p=25, hidden_reg_shape=(42,)):
+                 generations=60, min_inst=1, max_inst=100, fitness='p', hidden_reg_shape=(42,),
+                 area_p=10, grow_p=25, mutation_p=25, crossover_p=25):
         '''
         Initialize LGP algorithm object
 
@@ -70,7 +70,7 @@ class LGP:
             max_inst:           Maximum required lenght of program in instructions
             fitness:            Fitness function (choose from 'ce' and 'p'), see Program class
             dataset:            Dataset instance
-            grow:               Incrementaly increase the lenght of program (in %)
+            grow_p:               Incrementaly increase the lenght of program (in %)
             mutation_p:         Mutation probability (in %)
             crossover_p:        Crossover probability (in %)
             hidden_reg_shape:    Shape of hidden register field
@@ -83,7 +83,7 @@ class LGP:
         self.generations = generations              # How many generation to evolve
         self.actual_generation = 0                  # Generation evolving right now
 
-        self.grow = grow / 100.                     # Probability (in %) for a program to grow (an instruction)
+        self.grow_p = grow_p / 100.                     # Probability (in %) for a program to grow_p (an instruction)
         self.min_inst = min_inst                    # Minimal number of Program instructions
         self.max_inst = max_inst                    # Maximal number of Program instructions
         self.hidden_reg_shape = hidden_reg_shape    # Shape of hidden register field
@@ -96,6 +96,7 @@ class LGP:
 
         self.mutation_p = mutation_p / 100.         # Main GA parameters, mutation and
         self.crossover_p = crossover_p / 100.       # crossover probabilities
+        self.area_p = area_p / 100.                 # Probability of area-processing instruction
         self.elite_size = elite                     # Size of elite to keep to another gen
         self.equal_elite = equal_elite              # Distribute elite equally (not proportionally to fitness) when repopulating
 
@@ -125,14 +126,14 @@ class LGP:
         # Mutation not even considered because it's randomly generated at the first place
         if not self.evaluated:
             return Program.creation(self.max_inst, self.min_inst, self.obj_shape,
-                                    self.classes, self.hidden_reg_shape)
+                                    self.classes, self.hidden_reg_shape, self.area_p)
 
         # If population was evaluated, let's take the elite and repopulate
         elite_pop, elite_fitness = self.elite
         # Use fitness values as probability distribution of individuals or use uniform distribution among elite if self.equal_elite
         elite_probs = (np.ones_like(elite_fitness) / len(elite_pop)) if self.equal_elite else (elite_fitness / elite_fitness.sum())
         # Decide which actions to perform. If neither, program will be shrunk (it's already in the new population, so the new one gotta change a bit)
-        crossover, mutate, grow = self.repopulation_probs >= np.random.random(3)
+        crossover, mutate, grow_p = self.repopulation_probs >= np.random.random(3)
         
         ## Actual process of generating the new offspring begins here
         # Create new offspring either by crossover of 2 parents or by simple selection of elite individual
@@ -147,13 +148,13 @@ class LGP:
         if mutate:
             offspring.mutate()
         
-        # Grow if randomly chosen to
-        if grow:
-            offspring.grow()
+        # Grow_p if randomly chosen to
+        if grow_p:
+            offspring.grow_p()
 
         # When neither of following actions was chosen, let's delete individual's 
         # random instruction to decrease the probability of the same programs in population
-        if not crossover and not mutate and not grow:
+        if not crossover and not mutate and not grow_p:
             offspring.shrink()
         
         # Finally return the newborn
@@ -161,8 +162,8 @@ class LGP:
 
     @property
     def repopulation_probs(self):
-        '''Return numpy array of crossover, mutation and growth probabilities'''
-        return np.array([self.crossover_p, self.mutation_p, self.grow])
+        '''Return numpy array of crossover, mutation and grow_pth probabilities'''
+        return np.array([self.crossover_p, self.mutation_p, self.grow_p])
 
 
     ################################################################################
@@ -230,7 +231,7 @@ class LGP:
     def _info_dict(self):
         '''Obtain information about Program instance in a dictionary'''
         return {
-            
+            'kokos': 'kokos'
         }
 
     def __repr__(self):
