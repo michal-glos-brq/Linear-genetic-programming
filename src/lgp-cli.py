@@ -20,6 +20,8 @@ from datasets import Dataset
 from LGP import LGP
 
 
+### TODO: Refactor argument processing
+
 
 # Execute code
 if __name__ == '__main__':
@@ -111,7 +113,7 @@ if __name__ == '__main__':
     # Parse the arguments
     args = parser.parse_args()
 
-    # Perform some assertions on our CLI options
+    # Perform some assertions on CLI args values
     assert 1 < args.elite < args.population, \
         (f'Kept elite ({args.elite}) has to be lower then population ({args.population}) '
          f'and higher then 1 for eventuall crossovers.')
@@ -135,15 +137,27 @@ if __name__ == '__main__':
         'max_inst': args.max_instr,
         'fitness': args.fitness,
         'mutation_p': args.mutation_p,
+        'mutate_reg': args.mutate_reg,
+        'mutate_inst': args.mutate_inst,
         'crossover_p': args.crossover_p,
         'elite': args.elite,
         'equal_elite': args.equal_elite,
         'hidden_regfield': args.regs
     }
 
+    dataset_kwargs = {
+        'name': args.dataset,
+        'root': args.data_root,
+        'edge_size': args.resize,
+        'data_split': args.data_split,
+        'normalize': args.normalize,
+        'test': args.test_dataset
+   }
+
     ################################################################################
     #####                             Utilities                                #####
     ################################################################################
+
 
     # Configure logging
     logging.basicConfig(level=logging.DEBUG if args.debug else logging.INFO)
@@ -152,17 +166,16 @@ if __name__ == '__main__':
     ################################################################################
     #####                              Dataset                                 #####
     ################################################################################
-    
-    # Obtain the dataset
-    dataset = Dataset(name=args.dataset, root=args.data_root, edge_size=args.resize,
-                      data_split=args.data_split, normalize=args.normalize,
-                      test=args.test_dataset)
+
+    with torch.no_grad():
+        dataset = Dataset(**dataset_kwargs)
     logging.debug(f'Dataset loaded with configuration:\n{dataset}')
 
 
     ################################################################################
     #####                          Loading program                             #####
     ################################################################################
+
 
     # Try to load program if path was provided
     program = None
@@ -183,11 +196,10 @@ if __name__ == '__main__':
     #####                            LGP training                              #####
     ################################################################################
 
-    # If --train flag -> start training
+
     if args.train:
         # Disable gradient computation for faster results
         with torch.no_grad():
-            # This is getting out of hand - long var names, access properties ... but clarity is kept
             lgp = LGP(dataset, program, **LGP_kwargs)
 
             logging.debug(f'LGP object initialized in configuration of:\n{lgp}')
@@ -199,13 +211,13 @@ if __name__ == '__main__':
     #####                           LGP evaluation                             #####
     ################################################################################
 
-    # If --eval flag - start evaluating
+
     if args.eval:
 
         # Check if program obtained
         if program is None:
             sys.exit('Attempt to evaluate non-defined program (None). Either train a new one or provide path to a pickled one.')
-        
+
         # Proceed to evaluation on the whole evaluation dataset while torch grads are turned off
         with torch.no_grad():
             results = program.eval(dataset.eval_X, dataset.eval_y)
