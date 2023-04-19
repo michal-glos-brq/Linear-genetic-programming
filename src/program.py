@@ -15,13 +15,12 @@ from pprint import pformat
 from typing import Iterable, Union, Callable, Dict
 from numbers import Number
 
-# Avoid circular import, have correct datatype though
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from .LGP import LGP
-
-from .instruction import Instruction
+# That's the best solution i got for importing modules correctly from wherever (not really)
+# I'm not satisfied though but this covers all my use cases even with interactive python
+try:
+    from src.instruction import Instruction
+except:
+    from instruction import Instruction
 
 ################################################################################
 #####                      Linear program class                            #####
@@ -85,7 +84,7 @@ class Program:
     ################################################################################
 
     @staticmethod
-    def creation(lgp: LGP) -> "Program":
+    def creation(lgp) -> "Program":
         """
         Create random individual with no ancestors
 

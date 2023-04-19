@@ -8,17 +8,24 @@
 # @$%&     `---' &%$@ #
 #######################
 
-import torch
-import numpy as np
 
-from tqdm import tqdm
 from pprint import pformat
-
 from numbers import Number
 from typing import Tuple, Iterable, Union, Dict
 
-from .program import Program
-from .datasets import Dataset
+import torch
+import numpy as np
+from tqdm import tqdm
+
+# That's the best solution i got for importing modules correctly from wherever (not really)
+# I'm not satisfied though but this covers all my use cases even with interactive python
+try:
+    from src.program import Program
+    from src.datasets import Dataset
+except:
+    from program import Program
+    from datasets import Dataset
+
 
 ################################################################################
 #####                       Fitness functions                              #####

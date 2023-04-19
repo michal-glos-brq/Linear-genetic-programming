@@ -17,7 +17,7 @@ as well as normalize and split data into training and eval sets.
 
 import sys
 from typing import Optional, Callable, Union, Tuple, Iterable, Dict
-from numbers import Number  # For typing
+from numbers import Number
 
 import numpy as np
 from tqdm import tqdm

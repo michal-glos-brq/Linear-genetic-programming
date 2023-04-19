@@ -8,17 +8,11 @@
 # @$%&     `---'   &%$@#
 #######################
 
-import torch
-import numpy as np
-
 from typing import Any, Dict, Iterable, Union, List
 from pprint import pformat
 
-# Avoid circular import, have correct datatype though
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from .program import Program
+import torch
+import numpy as np
 
 ################################################################################
 #####                       Easy access constants                          #####
@@ -76,7 +70,7 @@ class Instruction:
         area_op:    Area operation, None if area == False
     """
 
-    def __init__(self, parent: Program) -> None:
+    def __init__(self, parent) -> None:
         """
         Initialize the instruction as object
 
@@ -221,7 +215,7 @@ class Instruction:
         # Execute the mutation function
         mutation_function()
 
-    def copy(self, parent: Program) -> "Instruction":
+    def copy(self, parent) -> "Instruction":
         """Create new instruction under provided parent"""
         # Create the object instance
         new_instruction = Instruction(parent)
@@ -239,7 +233,7 @@ class Instruction:
         return new_instruction
 
     @staticmethod
-    def random(parent: Program) -> "Instruction":
+    def random(parent) -> "Instruction":
         """Generate a random instruction object instance"""
         # Create the object instance
         new_instruction = Instruction(parent)
