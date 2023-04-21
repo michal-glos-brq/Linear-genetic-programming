@@ -15,6 +15,7 @@ from os.path import join, isfile
 from typing import Tuple, Iterable, Union, Dict
 
 import torch
+from torch.nn import CrossEntropyLoss
 import numpy as np
 from tqdm import tqdm
 
@@ -34,7 +35,6 @@ torch.set_printoptions(profile="full")
 class PopulationNotEvaluatedError(Exception):
     pass
 
-
 def success_rate(result_registers: torch.Tensor, gt_labels: torch.Tensor) -> float:
     """
     Compute the percentage of correctly predicted classes.
@@ -52,11 +52,26 @@ def success_rate(result_registers: torch.Tensor, gt_labels: torch.Tensor) -> flo
     # Return the percentage of correct predictions
     return ((predictions.sum() / len(predictions)) * 100).item()
 
+def cross_entropy(result_registers: torch.Tensor, gt_labels: torch.Tensor) -> float:
+    """
+    Compute the percentage of correctly predicted classes.
 
-# TODO: Implement cross-entropy with fuzzy results
+    Args:
+        result_registers (torch.Tensor): Tensor containing the model's output.
+        gt_labels (torch.Tensor): Ground truth labels.
+
+    Returns:
+        float: Cross-entropy result.
+    """
+    # Normalize result registers with softmax
+    return CrossEntropyLoss()(result_registers.type(torch.double), gt_labels.type(torch.long)).item()
+
 
 # Mapping os tring to funtions
-FITNESS_FUNCTIONS = {"p": success_rate}
+FITNESS_FUNCTIONS = {
+    "p": success_rate,
+    "ce": cross_entropy
+}
 
 
 class LGP:
