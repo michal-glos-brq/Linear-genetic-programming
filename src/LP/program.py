@@ -5,23 +5,28 @@ This class implements all necessary genetic operations: crossover, mutation and 
 It also implements program evaluation.
 """
 
-
 import torch
 import numpy as np
+import pickle
 
 from pprint import pformat
-from typing import Iterable, Union, Callable, Dict
+from typing import Iterable, Union, Callable, Dict, Tuple
 from numbers import Number
 
 # That's the best solution i got for importing modules correctly from wherever (not really)
 # I'm not satisfied though but this covers all my use cases even with interactive python
 try:
-    from src.instruction import Instruction
+    from src.LP.instruction import Instruction, UNARY, BINARY, AREA
 except:
-    from instruction import Instruction
+    from src.LP.instruction import Instruction, UNARY, BINARY, AREA
 
 
 class InstructionIndexError(Exception):
+    """Tried to index an instruction of program outside of instruction array"""
+    pass
+
+class ProgramRegisterShapeError(Exception):
+    """Program has invalid shape of hidden registers, could not be used with loaded dataset"""
     pass
 
 
@@ -80,20 +85,45 @@ class Program:
         self.torch_device = torch_device
         self.area_instruction_p = area_instruction_p
 
+        self.hidden_register_count = self.hidden_register_initial_values.shape.numel()
+        self.result_register_count = self.result_register_initial_values.shape.numel()
+    
     @staticmethod
-    def creation(lgp) -> "Program":
+    def load_program(path: str, reg_shape: Tuple[int]) -> 'Program':
+        """
+        Load program from pickled file and assert configuration \
+        complience with current dataset configuration
+        Args:
+            path:   Path to pickled Program instance
+        """
+        with open(path, "rb") as file:
+            program = pickle.load(file)
+
+        # Program is trained with certain register dimensions, check current config for complience
+        if not list(program.hidden_regfiled.shape) == reg_shape:
+            raise ProgramRegisterShapeError((
+                f"Loaded programs hidden register fields ({', '.join(map(str, program.hidden_regfiled.shape))})"
+                f" has to be equal to CLI option provided ({', '.join(map(str, reg_shape))})!"
+            ))
+
+        return program
+
+    @staticmethod
+    def create_random(lgp) -> "Program":
         """
         Create random individual with no ancestors
 
-        Args
+        Args:
             lgp (Program): LGP object instance
+        Returns:
+            Program: Program instance with random genome
         """
         # Create the new individual
         new_individual = Program(
             lgp.max_instructions,
             lgp.min_instructions,
             lgp.object_shape,
-            (lgp.classes,),
+            (lgp.num_of_classes,),
             lgp.hidden_register_shape,
             lgp.area_instruction_p,
             lgp.torch_device,
@@ -198,36 +228,6 @@ class Program:
 
         return new_individual
 
-    def mutate(self, registers_to_mutate: int, instructions_to_mutate: int) -> None:
-        """
-        Perform program mutation
-
-        Mutation is performed in both: register init values and instructions
-            - registers get values added sampled from normal distribution (0,1)
-            - instructions are instruction related, mutation command is passed upon instruction
-
-        Args:
-            registers_to_mutate (int):  How many registers to mutate?
-            instructions_to_mutate (int):   How many instructions to mutate?
-        """
-        # Calculate how many mutations would be performed on hidden registers
-        register_sizes = torch.FloatTensor([self._hid_regs, self._res_regs])
-        hid_reg_mutations = register_sizes.multinomial(registers_to_mutate, replacement=True).sum()
-        res_reg_mutations = registers_to_mutate - hid_reg_mutations
-
-        # Perform register mutations (This gets hacky ... makes perfect sense though)
-        ## [torch.randperm(self._hid_regs)[:hid_reg_mutations]] - This indexes hid_reg_mutations
-        ## random elements of the Tensor without repeating, adds values sampled from normal dist.
-        self.hidden_register_initial_values.view(-1)[torch.randperm(self._hid_regs)[:hid_reg_mutations]] += torch.normal(
-            0, 1, (hid_reg_mutations,)
-        ).to(self.torch_device)
-        self.result_register_initial_values.view(-1)[torch.randperm(self._res_regs)[:res_reg_mutations]] += torch.normal(
-            0, 1, (res_reg_mutations,)
-        ).to(self.torch_device)
-
-        # Choose random distinct instructions and perform mutations
-        for instr in np.random.choice(self.instructions, size=instructions_to_mutate, replace=False):
-            instr.mutate()
 
     def delete_instruction(self, idx: Union[None, int] = None) -> None:
         """Delete instruction on index idx, random if idx is None"""
@@ -286,30 +286,21 @@ class Program:
         # Return the value for chosen fitness functions
         return fitness_fn(self.result_registers, y_gt)
 
-    @property
-    def _hid_regs(self) -> int:
-        """Number of hidden registers"""
-        return self.hidden_register_initial_values.shape.numel()
 
-    @property
-    def _res_regs(self) -> int:
-        """Number of result registers"""
-        return self.result_register_initial_values.shape.numel()
 
     @property
     def _info_dict(self) -> Dict[str, Dict]:
         """Obtain information about Program instance in a dictionary"""
         return {
-            "1 - Hidden register field": {
+            "Hidden register field": {
                 "shape": self.hidden_register_shape,
                 "init values": self.hidden_register_initial_values,
             },
-            "2 - Result register field": {
+            "Result register field": {
                 "shape": self.result_register_shape,
                 "init_values": self.result_register_initial_values,
             },
-            # This should be sorted by pformat, if not, make it a list of pair tuples
-            "3 - Instructions": [f"{i}: {instr}" for i, instr in enumerate(self.instructions, 1)],
+            "Instructions": [f"{i}: {instr}" for i, instr in enumerate(self.instructions, 1)],
         }
 
     def __repr__(self) -> str:

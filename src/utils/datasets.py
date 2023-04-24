@@ -2,26 +2,26 @@
 This Python3 module implements a wrapper around torchvision or custom created dummy datasets.
 
 Dataset class provides basic methods and properties to easily download or create the dataset
-as well as normalize and split data into training and evaluation sets. 
+as well as normalize and split data into training and evaluation sets.
 """
 
-import sys
-from typing import Callable, Union, Tuple, Iterable, Dict
+from typing import Callable, Union, Tuple, Dict
 from numbers import Number
 
-import numpy as np
 from tqdm import tqdm
 from pprint import pformat
 from PIL import Image
+from functools import partial
 
 import torch
 from torchvision import datasets
-from torchvision.transforms import PILToTensor
+from torchvision.transforms import ToTensor
 
 
-def resizePIL(edge_size: Union[int, None]) -> Callable[[Image.Image], torch.Tensor]:
+def resize_and_convert_pil(edge_size: Union[int, None]) -> Callable[[Image.Image], torch.Tensor]:
     """
-    Function factory for: square PIL image resizer + to tensor converters
+    Function factory for: square PIL image resizer + to tensor converter
+    All resized images are squares
 
     Args:
         edge_size Union[int, None]: Image edge size after resizing, None if no resizing
@@ -30,19 +30,26 @@ def resizePIL(edge_size: Union[int, None]) -> Callable[[Image.Image], torch.Tens
             PIL images and converting them into torch.Tensor
     """
     # Instantiate PIL Image to torch Tensor converter
-    pil_to_tensor = PILToTensor()
+    to_tensor = ToTensor()
 
-    def inner_fn(img):
-        """Resize if required, then convert to torch tensor"""
-        # Resize
+    # Create a partial function for resizing images if edge_size is provided
+    resize_fn = partial(Image.Image.resize, size=(edge_size, edge_size)) if edge_size else None
+
+    def process_image(img):
+        """
+        Resize the image (if required) and convert it to a torch tensor.
+
+        Args:
+            img (Image.Image): Input PIL image.
+
+        Returns:
+            torch.Tensor: Output torch tensor.
+        """
         if edge_size:
-            img = img.resize((edge_size, edge_size))
-        # Convert to torch Tensor
-        nonlocal pil_to_tensor
-        return pil_to_tensor(img)
+            img = resize_fn((edge_size, edge_size))
+        return to_tensor(img)
 
-    # Factory output
-    return inner_fn
+    return process_image
 
 
 class Dataset:
@@ -53,10 +60,10 @@ class Dataset:
         normalizing dataset or providing dataset metadata.
 
     Attributes:
-        classes (List[str]): Subscriptable data structure containing class names.
+        classes (List[str]): List with class names.
         X (torch.Tensor): Dataset tensor (data).
         y (torch.Tensor): Dataset tensor (labels).
-        device (torch.device): Torch device (GPU if available, otherwise CPU).
+        torch_device (torch.torch_device): Torch torch_device (GPU if available, otherwise CPU).
     """
 
     def __init__(
@@ -79,24 +86,29 @@ class Dataset:
             normalize (Tuple[Number]): Iterable of length > 1, interval for linear normalization of image pixels.
             test (Union[Tuple[Number], None]): Tuple with 2 numbers: (number of classes, number of entries in dataset).
         """
-        # Obtain torch device (Try to obtain GPU, fallback to CPU if GPU not found)
-        self.device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+        self.torch_device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
-        # If test dataset not required, use the chosen torch dataset
         if test is None:
-            self.get_torch_dataset(name, root, edge_size)
+            self.load_torch_dataset(name, root, edge_size)
         else:
-            self.get_test_dataset(*test)
+            self.create_test_dataset(*test)
 
-        self.edge_size = edge_size if edge_size else "orig"
+        # For naming purpose only
+        self.edge_size = str(edge_size) if edge_size else "orig"
 
-        # Apply data normalization
-        self.normalize_data(*normalize)
+        with torch.no_grad():
+            self.normalize_data(*normalize)
 
-        # Apply equation to compute boundaries on self.data for training|eval data (choose min - limit|actual_size)
         self.dataset_split = int(data_split / 100.0 * self.X.shape[0])
+        self.class_count = len(self.classes)
+        self.object_shape = self.X.shape[1:]
+        self.test_X = self.X[: self.dataset_split]
+        self.test_y = self.y[: self.dataset_split]
+        self.eval_X = self.X[self.dataset_split :]
+        self.eval_y = self.y[self.dataset_split :]
 
-    def get_torch_dataset(self, name: str, root: str, edge_size: Union[None, int]) -> None:
+
+    def load_torch_dataset(self, name: str, root: str, edge_size: Union[None, int]) -> None:
         """
         Obtain chosen dataset from torchvision module
 
@@ -105,59 +117,44 @@ class Dataset:
             root (str): Dataset folder (downloads end up in there).
             edge_size (Union[None, int]): Size of square of dataset images to be resized to (None when no resize).
         """
-        # Save the dataset loaded
+        # Obtain test and train torchvision datasets
         self.dataset_name = name
-        # Check for dataset name, exit the app if incorrect dataset required
-        if hasattr(datasets, name):
-            dataset_cls = getattr(datasets, name)
-        else:
-            sys.exit(f"Dataset with name {name} does not exist in torchivision datasets")
+        dataset_cls = getattr(datasets, name)
+        train = dataset_cls(root=root, train=True, download=True, transform=resize_and_convert_pil(edge_size))
+        test = dataset_cls(root=root, train=False, download=True, transform=resize_and_convert_pil(edge_size))
+        self.classes = train.classes
 
-        # Obtain training and testing data
-        train = dataset_cls(root=root, train=True, download=True, transform=resizePIL(edge_size))
-        test = dataset_cls(root=root, train=False, download=True, transform=resizePIL(edge_size))
-
-        # Merge both into a single dataset containing all data
+        # Merge both datasets
         data, labels = [], []
         for img, label in tqdm(train + test, ncols=100, desc="Loading dataset ..."):
             data.append(img)
             labels.append(label)
 
-        # Obtain a list of class names
-        self.classes = np.array(train.classes)
-
-        # Prepare data - merge test and train data into single tensor
         with tqdm(total=2, desc="Preparing dataset ...", ncols=100) as pbar:
-            # Load and convert labels into Tensors
-            self.y = torch.tensor(labels).to(self.device)
+            self.y = torch.tensor(labels).to(self.torch_device)
             pbar.update(1)
-            # Load and convert data into Tensors
-            self.X = torch.cat(data).to(self.device)
+            self.X = torch.cat(data).to(self.torch_device)
             pbar.update(1)
 
-    def get_test_dataset(self, classes: int, entries: int) -> None:
+
+    def create_test_dataset(self, classes: int, entries: int) -> None:
         """
         Create simple test dataset. Generate random dataset labels.
         From labels create one-hot encoded vectors, which would be used as data.
 
         Args:
-            classes (int): Number of classes (np.arange(classes) are labels).
+            classes (int): Number of classes.
             entries (int): Number of data entries to generate.
         """
-        # Save the dataset loaded
-        self.dataset_name = "Test/Dummy"
+        self.dataset_name = "Test-dataset"
         with tqdm(total=3, desc="Creating dataset ...", ncols=100) as pbar:
-            # Generate radom classes labels
-            self.y = torch.randint(0, classes, (entries,)).to(self.device)
+            self.y = torch.randint(0, classes, (entries,), device=self.torch_device)
             pbar.update(1)
-            # For each label, generate the same object
-            self.X = torch.zeros((entries, classes)).to(self.device)
+            self.X = torch.zeros((entries, classes), device=self.torch_device)
             pbar.update(1)
-            self.X = self.X.scatter(1, self.y.unsqueeze(1), 1).to(self.device)
+            self.X = self.X.scatter(1, self.y.unsqueeze(1), 1)
             pbar.update(1)
-
-        # Labels (subscriptable structure contains class names)
-        self.classes = np.arange(classes).astype(str)
+        self.classes = list(range(1, classes + 1))
 
     def normalize_data(self, lower_bound: Number, upper_bound: Number) -> None:
         """
@@ -167,52 +164,20 @@ class Dataset:
             lower_bound:    Normalization lower bound
             upper_bound:    Normalization upper bound
         """
-        # Save norm bounds in order to be displayd
         self.normalized_lower, self.normalized_upper = lower_bound, upper_bound
-        # 1. Normalize into interval <0,1>
         self.X = self.X / (self.X.max() - self.X.min())
-        # 2. Normalize into required interval span
         self.X = (self.X * (upper_bound - lower_bound)) + lower_bound
 
-    @property
-    def class_count(self) -> int:
-        """Return number of classes in dataset"""
-        return len(self.classes)
-
-    @property
-    def obj_shape(self) -> Iterable[int]:
-        """Return the shape of objects from dataset"""
-        return self.X.shape[1:]
-
-    @property
-    def test_X(self) -> torch.Tensor:
-        """Obtain testing data (objects)"""
-        return self.X[: self.dataset_split]
-
-    @property
-    def test_y(self) -> torch.Tensor:
-        """Obtain testing labels (classes)"""
-        return self.y[: self.dataset_split]
-
-    @property
-    def eval_X(self) -> torch.Tensor:
-        """Obtain eval data (objects)"""
-        return self.X[self.dataset_split :]
-
-    @property
-    def eval_y(self) -> torch.Tensor:
-        """Obtain eval labels (classes)"""
-        return self.y[self.dataset_split :]
 
     @property
     def _info_dict(self) -> Dict[str, Dict]:
-        """Obtain dictionary with information about self"""
+        """Provide crucial Information about dataset as a dictionary"""
         return {
             "Dataset": {
                 "entries training": self.dataset_split,
                 "entries eval": len(self.X) - self.dataset_split,
                 "entries total": len(self.X),
-                "device": self.device,
+                "torch_device": self.torch_device,
                 "name": self.dataset,
             },
             "Labels": {
@@ -229,5 +194,5 @@ class Dataset:
         }
 
     def __repr__(self) -> str:
-        """Return string representing of information about self"""
+        """Provide string representation of Dataset class instance"""
         return pformat(self._info_dict, width=120)
