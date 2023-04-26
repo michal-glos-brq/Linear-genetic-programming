@@ -1,8 +1,11 @@
-from typing import Dict, Callable
-from torch import Tensor
-import torch.nn.functional.cross_entropy as ce
+"""This python module provides fitness functions and their mapping to string codes"""
 
-def accuracy_score(result_registers: Tensor, ground_truth_labels: Tensor) -> float:
+from typing import Dict, Callable
+
+import torch
+from torch.nn.functional import cross_entropy as ce
+
+def accuracy_score(result_registers: torch.Tensor, ground_truth_labels: torch.Tensor) -> float:
     """
     Compute the percentage of correctly predicted classes.
 
@@ -16,11 +19,11 @@ def accuracy_score(result_registers: Tensor, ground_truth_labels: Tensor) -> flo
     predicted_labels = result_registers.argmax(dim=1)
     correct_predictions = (predicted_labels == ground_truth_labels).sum()
     accuracy = (correct_predictions / len(ground_truth_labels)) * 100
-    
+
     return accuracy.item()
 
 
-def cross_entropy_loss(result_registers: Tensor, ground_truth_labels: Tensor) -> float:
+def cross_entropy_loss(result_registers: torch.Tensor, ground_truth_labels: torch.Tensor) -> float:
     """
     Compute the cross-entropy between ground truth labels and model predictions.
 
@@ -31,12 +34,11 @@ def cross_entropy_loss(result_registers: Tensor, ground_truth_labels: Tensor) ->
     Returns:
         torch.Tensor: Cross-entropy result.
     """
-    # Normalize result registers with softmax
     return ce(result_registers, ground_truth_labels).item()
 
 
 # Mapping of strings to funtions
-FITNESS_FUNCTIONS: Dict[str, Callable[[Tensor, Tensor], float]] = {
+FITNESS_FUNCTIONS: Dict[str, Callable[[torch.Tensor, torch.Tensor], float]] = {
     "ac": accuracy_score,
     "ce": cross_entropy_loss,
 }

@@ -3,7 +3,7 @@ This humble python module implements all other utility functions used throughout
 """
 
 from os.path import isfile
-from numpy.random import random
+from random import random
 
 def true_with_probability(probability: float) -> bool:
     """
@@ -40,5 +40,4 @@ def generate_unique_filename(file_path: str, file_suffix: str = "p") -> str:
             unique_filename = f"{file_path}_{counter}.{file_suffix}"
 
         return unique_filename
-    else:
-        return base_filename
+    return base_filename

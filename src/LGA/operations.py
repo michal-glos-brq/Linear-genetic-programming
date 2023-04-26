@@ -1,9 +1,9 @@
 """
 This humble python module defines some tensor operations and groups operations into global constants according to their parity
 """
+from typing import Any, Callable, List
 
 import torch
-from typing import Any
 
 def identity(input_value: Any) -> Any:
     """
@@ -32,22 +32,25 @@ def safe_div(tensor1: torch.Tensor, tensor2: torch.Tensor) -> torch.Tensor:
     Returns:
         torch.Tensor: The resulting tensor after safe division.
     """
-    # Checking for division by 0
-    mask = torch.isclose(tensor2, torch.Tensor([0], device=tensor2.device))
+    mask = torch.isclose(tensor2, ZERO_SCALAR_TENSOR)
     result = torch.div(tensor1, tensor2)
-    # Set the result to 0 where the second tensor has 0 values
     result[mask] = 0
     return result
 
 
+# Is any better way to do that?
+ZERO_SCALAR_TENSOR = (torch.cuda if torch.cuda.is_available() else torch).FloatTensor(1).fill_(0)
+
 # Binary operations
-BINARY = [torch.add, torch.sub, torch.mul, torch.pow, safe_div]
+BINARY: List[Callable[[torch.Tensor, torch.Tensor], torch.Tensor]] = [torch.add, torch.sub, torch.mul, torch.pow, safe_div]
 
 # Unary operations (identity is added only when sampling an operation for area instruction)
-UNARY = [torch.exp, torch.log, torch.sin, torch.cos, torch.tan, torch.tanh, torch.sqrt]
+UNARY: List[Callable[[torch.Tensor], torch.Tensor]]  = [torch.exp, torch.log, torch.sin, torch.cos, torch.tan, torch.tanh, torch.sqrt]
 
 # Area operations (Reducing area to single value, unary operation has to preceed it)
-AREA = [torch.mean, torch.median, torch.sum, torch.max, torch.min, torch.prod]
+AREA: List[Callable[[], torch.Tensor]] = [torch.mean, torch.median, torch.sum, torch.max, torch.min, torch.prod]
+
+UNARY_OP_RATIO = len(UNARY) / (len(BINARY) + len(UNARY))
 
 INPUT_REGISTERS = ["input_registers", "hidden_registers"]
 OUTPUT_REGISTERS = ["hidden_registers", "result_registers"]

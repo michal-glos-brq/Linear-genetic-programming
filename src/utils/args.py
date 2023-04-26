@@ -10,7 +10,7 @@ from typing import Tuple, Dict
 
 from torchvision.datasets import __dict__ as torchvision_datasets
 
-from LP.operations import BINARY, UNARY, AREA
+from LGA.operations import BINARY, UNARY, AREA
 from utils.losses import FITNESS_FUNCTIONS
 
 def parse_arguments() -> Namespace:
@@ -54,9 +54,8 @@ def parse_arguments() -> Namespace:
     parser.add_argument("-l", "--load", type=str, help="Load a pre-trained program from the specified path")
     parser.add_argument(
         "-md", "--model-dir", type=str, default="programs",
-        help="Specify the directory to save the best programs in the format: {--dataset}{--resize}_{generation}_{fitness}.p"
+        help="Specify the directory to save the best programs in the format: {dataset}_{resize}_{fitness}_{timestamp}.p"
     )
-    parser.add_argument("--model-save-interval", type=int, default=1, help="Save best model each N generations")
     parser.add_argument("-log", "--logging-dir", default="logging", type=str, help="Specify the directory for logging")
 
     # LGA parameters
@@ -138,27 +137,27 @@ def validate_lga_configuration(args: Namespace) -> None:
 
 def validate_program_mutation(args: Namespace) -> None:
     """Validate program mutation configuration parameters."""
-    if not (0 <= args.p_cross <= 100):
+    if not 0 <= args.p_cross <= 100:
         raise ValueError(
             f"Crossover probability should be a number between 0 and 100 (inclusive) (got {args.p_cross})"
         )
 
-    if not (0 <= args.p_mutate <= 100):
+    if not 0 <= args.p_mutate <= 100:
         raise ValueError(
             f"Mutation probability should be a number between 0 and 100 (inclusive) (got {args.p_mutate})"
         )
 
-    if not (0 <= args.p_grow <= 100):
+    if not 0 <= args.p_grow <= 100:
         raise ValueError(
             f"Growth probability should be a number between 0 and 100 (inclusive) (got {args.p_grow})"
         )
 
-    if not (0 <= args.p_shrink <= 100):
+    if not 0 <= args.p_shrink <= 100:
         raise ValueError(
             f"Shrink probability should be a number between 0 and 100 (inclusive) (got {args.p_shrink})"
         )
 
-    if not (0 <= args.p_area <= 100):
+    if not 0 <= args.p_area <= 100:
         raise ValueError(
             f"Area instruction probability should be a number between 0 and 100 (inclusive) (got {args.p_area})"
         )
@@ -191,7 +190,7 @@ def validate_dataset(args: Namespace) -> None:
     if args.test is not None and args.test[1] < 2:
         raise ValueError(f"Number of entriers in test dataset should be at least 2 (got {args.test})")
 
-    if (0 < args.split < 100):
+    if not 0 < args.split < 100:
         raise ValueError(f"Dataset of split point should be inbetween 0 and 100 (exclusive) (got {args.split})")
 
     if args.dataset not in torchvision_datasets:
@@ -247,7 +246,6 @@ def prepare_configurations(args: Namespace) -> Tuple[Dict, Dict]:
         "hidden_register_shape": tuple(args.regs),  # When used as shape, lists throw error
         "logging_dir": args.logging_dir,
         "model_dir": args.model_dir,
-        "model_save_interval": args.model_save_interval,
         "binary": args.binary,
         "unary": args.unary,
         "area": args.area

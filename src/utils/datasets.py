@@ -5,15 +5,14 @@ Dataset class provides basic methods and properties to easily download or create
 as well as normalize and split data into training and evaluation sets.
 """
 
+from pprint import pformat
+from functools import partial
 from typing import Callable, Union, Tuple, Dict
 from numbers import Number
 
-from tqdm import tqdm
-from pprint import pformat
-from PIL import Image
-from functools import partial
-
 import torch
+from PIL import Image
+from tqdm import tqdm
 from torchvision import datasets
 from torchvision.transforms import ToTensor
 
@@ -46,12 +45,12 @@ def resize_and_convert_pil(edge_size: Union[int, None]) -> Callable[[Image.Image
             torch.Tensor: Output torch tensor.
         """
         if edge_size:
-            img = resize_fn((edge_size, edge_size))
+            img = resize_fn(img)
         return to_tensor(img)
 
     return process_image
 
-
+# pylint: disable=invalid-name, too-many-arguments
 class Dataset:
     """
     Simple dataset wrapper, either torchvision or custom dataset with one-hot encoded labels as data
@@ -102,10 +101,10 @@ class Dataset:
         self.dataset_split = int(data_split / 100.0 * self.X.shape[0])
         self.class_count = len(self.classes)
         self.object_shape = self.X.shape[1:]
-        self.test_X = self.X[: self.dataset_split]
-        self.test_y = self.y[: self.dataset_split]
-        self.eval_X = self.X[self.dataset_split :]
-        self.eval_y = self.y[self.dataset_split :]
+        self.test_X = self.X[:self.dataset_split]
+        self.test_y = self.y[:self.dataset_split]
+        self.eval_X = self.X[self.dataset_split:]
+        self.eval_y = self.y[self.dataset_split:]
 
 
     def load_torch_dataset(self, name: str, root: str, edge_size: Union[None, int]) -> None:
@@ -178,14 +177,14 @@ class Dataset:
                 "entries eval": len(self.X) - self.dataset_split,
                 "entries total": len(self.X),
                 "torch_device": self.torch_device,
-                "name": self.dataset,
+                "name": self.dataset_name,
             },
             "Labels": {
                 "distinct labels": self.class_count,
                 "label names": self.classes,
             },
             "Objects": {
-                "shape": self.obj_shape,
+                "shape": self.object_shape,
                 "norm. upper": self.normalized_upper,
                 "norm. upper real": self.X.max(),
                 "norm. lower": self.normalized_lower,
