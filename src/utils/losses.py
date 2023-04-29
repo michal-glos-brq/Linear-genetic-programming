@@ -3,7 +3,9 @@
 from typing import Dict, Callable
 
 import torch
-from torch.nn.functional import cross_entropy as ce
+from torch.nn.functional import cross_entropy, softmax
+
+CROSS_ENTROPY_BASE = 10
 
 def accuracy_score(result_registers: torch.Tensor, ground_truth_labels: torch.Tensor) -> float:
     """
@@ -16,11 +18,7 @@ def accuracy_score(result_registers: torch.Tensor, ground_truth_labels: torch.Te
     Returns:
         torch.Tensor: The percentage of correct predictions.
     """
-    predicted_labels = result_registers.argmax(dim=1)
-    correct_predictions = (predicted_labels == ground_truth_labels).sum()
-    accuracy = (correct_predictions / len(ground_truth_labels)) * 100
-
-    return accuracy.item()
+    return (result_registers.argmax(dim=1) == ground_truth_labels).sum() / ground_truth_labels.size(0)
 
 
 def cross_entropy_loss(result_registers: torch.Tensor, ground_truth_labels: torch.Tensor) -> float:
@@ -34,7 +32,7 @@ def cross_entropy_loss(result_registers: torch.Tensor, ground_truth_labels: torc
     Returns:
         torch.Tensor: Cross-entropy result.
     """
-    return ce(result_registers, ground_truth_labels).item()
+    return torch.nan_to_num(CROSS_ENTROPY_BASE - cross_entropy(softmax(result_registers, dim=1), ground_truth_labels))
 
 
 # Mapping of strings to funtions

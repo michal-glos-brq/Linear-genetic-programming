@@ -6,23 +6,18 @@ It also implements program evaluation.
 """
 
 import pickle
-from pprint import pformat
 from math import prod
+from numbers import Number
+from pprint import pformat
 from random import random, randint
 from typing import Iterable, Union, Callable, Dict, Tuple
-from numbers import Number
 
 import torch
 
 from LGA.instruction import Instruction
+from utils.other import InstructionIndexError, ProgramRegisterShapeError
 
 TENSOR_FACOTRY = (torch.cuda if torch.cuda.is_available() else torch)
-
-class InstructionIndexError(Exception):
-    """Tried to index an instruction of program outside of instruction array"""
-
-class ProgramRegisterShapeError(Exception):
-    """Program has invalid shape of hidden registers, could not be used with loaded dataset"""
 
 
 # pylint: disable=too-many-arguments
@@ -39,6 +34,8 @@ class Program:
         result_register_initial_values (torch.Tensor): Initialization values of result vector memory.
         register_shapes (Dict[str, Tuple[int]]): Mapping of register names to their shapes.
     """
+    # Linear Genetic Algorithm
+    lga = None
 
     def __init__(
         self,
@@ -224,7 +221,6 @@ class Program:
         """Add random instruction. Also remove another when the max instruction limit would be exceeded"""
         if len(self.instructions) >= self.min_instructions:
             self.delete_instruction()
-        # Append new and random instruction at the end of instruction list
         self.instructions.append(Instruction.random(self))
 
     def shrink(self) -> None:
@@ -236,7 +232,7 @@ class Program:
     # pylint: disable=invalid-name
     def evaluate(
         self, X: torch.Tensor, y_gt: torch.Tensor, fitness_fn: Callable[[torch.Tensor, torch.Tensor], Number]
-    ) -> Number:
+    ) -> torch.Tensor:
         """
         Evaluate the program on the given dataset
 
@@ -245,18 +241,24 @@ class Program:
             y_gt (torch.Tensor): Tensor of ground truth labels.
             fitness_fn (Callable[[torch.Tensor, torch.Tensor], Number]): Fitness function.
         Returns:
-            Number: Fitness score
+            torch.Tensor: Fitness score
         """
         self.input_registers = X    # Programs can't write into input register, therfore no cloning
+
         self.hidden_registers = self.hidden_register_initial_values.repeat(
-            X.shape[0], *(len(self.hidden_register_shape) * [1])
+            X.size(0), *(len(self.hidden_register_initial_values.shape) * [1])
         )
-        self.result_registers = self.result_register_initial_values.repeat(X.shape[0], 1)
+        self.result_registers = self.result_register_initial_values.repeat(X.size(0), 1)
 
         for instruction in self.instructions:
             instruction.execute()
 
-        return fitness_fn(self.result_registers, y_gt)
+        result = fitness_fn(self.result_registers, y_gt)
+
+        del self.hidden_registers
+        del self.result_registers
+
+        return result
 
 
     @property

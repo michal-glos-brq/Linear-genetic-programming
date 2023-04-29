@@ -1,9 +1,10 @@
 """
 This humble python module defines some tensor operations and groups operations into global constants according to their parity
 """
-from typing import Any, Callable, List
+from typing import Any, Callable, List, Iterable
 
 import torch
+
 
 def identity(input_value: Any) -> Any:
     """
@@ -21,34 +22,82 @@ def identity(input_value: Any) -> Any:
     return input_value
 
 
-def safe_div(tensor1: torch.Tensor, tensor2: torch.Tensor) -> torch.Tensor:
+def times_minus1(tensor: torch.Tensor) -> torch.Tensor:
     """
     Divide tensors safely. If attempted to divide by 0, set the result to 0.
 
     Args:
-        tensor1 (torch.Tensor): The first tensor.
-        tensor2 (torch.Tensor): The second tensor.
+        tensor (torch.Tensor): The input tensor.
 
     Returns:
-        torch.Tensor: The resulting tensor after safe division.
+        torch.Tensor: Tensor with switched sign
     """
-    mask = torch.isclose(tensor2, ZERO_SCALAR_TENSOR)
+    return tensor * (-1)
+
+
+#pylint disable=comparison-with-itself
+def safe_division(tensor1: torch.Tensor, tensor2: torch.Tensor) -> torch.Tensor:
+    """Safe division"""
     result = torch.div(tensor1, tensor2)
-    result[mask] = 0
-    return result
+    return torch.nan_to_num(result, posinf=0., neginf=0.)
+
+#pylint disable=comparison-with-itself
+def safe_power(tensor1: torch.Tensor, tensor2: torch.Tensor) -> torch.Tensor:
+    """Safe power"""
+    result = torch.pow(tensor1, tensor2)
+    return torch.nan_to_num(result, posinf=0., neginf=0.)
+
+#pylint disable=comparison-with-itself
+def safe_exp(tensor1: torch.Tensor) -> torch.Tensor:
+    """Safe exp"""
+    result = torch.exp(tensor1)
+    return torch.nan_to_num(result, posinf=0., neginf=0.)
+
+#pylint disable=comparison-with-itself
+def safe_logarithm(tensor: torch.Tensor) -> torch.Tensor:
+    """Safe division"""
+    result = torch.log(tensor)
+    return torch.nan_to_num(result, posinf=0., neginf=0.)
+
+#pylint disable=comparison-with-itself
+def safe_tan(tensor: torch.Tensor) -> torch.Tensor:
+    """Safe division"""
+    result = torch.tan(tensor)
+    return torch.nan_to_num(result, posinf=0., neginf=0.)
 
 
-# Is any better way to do that?
-ZERO_SCALAR_TENSOR = (torch.cuda if torch.cuda.is_available() else torch).FloatTensor(1).fill_(0)
+#pylint disable=comparison-with-itself
+def safe_square_root(*tensors: Iterable[torch.Tensor]) -> torch.Tensor:
+    """Safe division"""
+    result = torch.sqrt(*tensors)
+    return torch.nan_to_num(result, posinf=0., neginf=0.)
+
 
 # Binary operations
-BINARY: List[Callable[[torch.Tensor, torch.Tensor], torch.Tensor]] = [torch.add, torch.sub, torch.mul, torch.pow, safe_div]
+BINARY: List[Callable[[torch.Tensor, torch.Tensor], torch.Tensor]] = [
+    torch.add,
+    torch.sub,
+    torch.mul,
+    safe_power,
+    torch.min,
+    torch.max,
+    safe_division,
+]
 
 # Unary operations (identity is added only when sampling an operation for area instruction)
-UNARY: List[Callable[[torch.Tensor], torch.Tensor]]  = [torch.exp, torch.log, torch.sin, torch.cos, torch.tan, torch.tanh, torch.sqrt]
+UNARY: List[Callable[[torch.Tensor], torch.Tensor]] = [
+    safe_exp,
+    safe_logarithm,
+    torch.sin,
+    torch.cos,
+    safe_tan,
+    torch.tanh,
+    safe_square_root,
+    times_minus1,
+]
 
 # Area operations (Reducing area to single value, unary operation has to preceed it)
-AREA: List[Callable[[], torch.Tensor]] = [torch.mean, torch.median, torch.sum, torch.max, torch.min, torch.prod]
+AREA: List[Callable[[], torch.Tensor]] = [torch.mean, torch.sum, torch.prod]
 
 UNARY_OP_RATIO = len(UNARY) / (len(BINARY) + len(UNARY))
 

@@ -98,7 +98,7 @@ class Dataset:
         with torch.no_grad():
             self.normalize_data(*normalize)
 
-        self.dataset_split = int(data_split / 100.0 * self.X.shape[0])
+        self.dataset_split = int(data_split / 100.0 * self.X.size(0))
         self.class_count = len(self.classes)
         self.object_shape = self.X.shape[1:]
         self.test_X = self.X[:self.dataset_split]
@@ -119,6 +119,7 @@ class Dataset:
         # Obtain test and train torchvision datasets
         self.dataset_name = name
         dataset_cls = getattr(datasets, name)
+
         train = dataset_cls(root=root, train=True, download=True, transform=resize_and_convert_pil(edge_size))
         test = dataset_cls(root=root, train=False, download=True, transform=resize_and_convert_pil(edge_size))
         self.classes = train.classes
@@ -132,7 +133,11 @@ class Dataset:
         with tqdm(total=2, desc="Preparing dataset ...", ncols=100) as pbar:
             self.y = torch.tensor(labels).to(self.torch_device)
             pbar.update(1)
-            self.X = torch.cat(data).to(self.torch_device)
+
+            if data[0].size(0) == 1:
+                self.X = torch.cat(data).to(self.torch_device)
+            else:
+                self.X = torch.stack(data).to(self.torch_device)
             pbar.update(1)
 
 

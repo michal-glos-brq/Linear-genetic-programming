@@ -10,6 +10,7 @@ import torch
 from utils.other import true_with_probability
 from LGA.operations import UNARY, BINARY, AREA, identity, INPUT_REGISTERS, OUTPUT_REGISTERS, UNARY_OP_RATIO
 
+
 class Instruction:
     """
     Single instruction of Program
@@ -24,6 +25,9 @@ class Instruction:
         output_register_indices (Union[int, Tuple[int]]): The index into the output register.
         is_area_operation (bool): Whether the Instruction instance works with tensor slices.
         area_operation_function (Callable): The area operation, None if area is False.
+
+        Note: Indices (not slices) into register Tensors always start with ellipsis (...)
+
     """
 
     def __init__(self, parent) -> None:
@@ -43,35 +47,36 @@ class Instruction:
         self.is_area_operation = None
         self.area_operation_function = None
 
-
     def obtain_operands(self) -> List[torch.Tensor]:
-        """Obtain input tensors (instruction operands) from input registers."""
-        input_registers = [getattr(self.parent, input_register) for input_register in self.input_registers]
-        operands = []
-        for indices, register in zip(self.input_register_indices, input_registers):
-            # When slicing with tuples, 1st dimension (object array) have to be
-            # moved to the last position (slicing from 1st dim.) and back after slicing
-            operands.append(torch.moveaxis(torch.moveaxis(register, 0, -1)[indices], -1, 0))
+        """Obtain instruction operands (value Tensors)"""
+        if self.is_area_operation:
+            return [
+                Instruction.multi_slice(getattr(self.parent, register), indices)
+                for indices, register in zip(self.input_register_indices, self.input_registers)
+            ]
+        return [
+            getattr(self.parent, register)[indices]
+            for indices, register in zip(self.input_register_indices, self.input_registers)
+        ]
 
-        return operands
+    def compute(self, operands: List[torch.Tensor]) -> torch.Tensor:
+        """Perform calculations, replance NaN with 0"""
+        result = self.operation_function(*operands)
 
+        if self.is_area_operation:
+            result = self.area_operation_function(result.view((result.size(0), -1)), dim=1)
+
+        return result
 
     def save_result(self, result: torch.Tensor) -> None:
-        """Save result into instructions' output register on output index"""
-        output_register = getattr(self.parent, self.output_register)
-        torch.moveaxis(output_register, 0, -1)[self.output_register_indices] = result 
-
+        """Save result into output register on output register indices"""
+        getattr(self.parent, self.output_register)[self.output_register_indices] = result
 
     def execute(self) -> None:
         """Execute vectorized instruction on the whole (Program) input register field"""
         operands = self.obtain_operands()
-        result = self.operation_function(*operands)
-
-        if self.is_area_operation:
-            result = self.area_operation_function(result)
-
+        result = self.compute(operands)
         self.save_result(result)
-
 
     def copy(self, parent) -> "Instruction":
         """
@@ -96,7 +101,6 @@ class Instruction:
 
         return new_instr
 
-
     @staticmethod
     def random(parent) -> "Instruction":
         """Generate a random Instruction object instance"""
@@ -107,10 +111,7 @@ class Instruction:
         new_instr.operation_parity = 1 if is_unary_operation else 2
 
         if is_unary_operation:
-            new_instr.operation_function = choice(
-                # Identity is employed only with area operations so only area operation would take effect on the inputs
-                UNARY + ([identity] if new_instr.is_area_operation else [])
-            )
+            new_instr.operation_function = choice(UNARY + ([identity] if new_instr.is_area_operation else []))
         else:
             new_instr.operation_function = choice(BINARY)
 
@@ -120,7 +121,7 @@ class Instruction:
         if new_instr.is_area_operation:
             # For each register and dimenstion obtain 2 ascending unique indices in bounds of tensor shape
             new_instr.input_register_indices = [
-                Instruction.get_random_slice(new_instr.parent.register_shapes[new_instr.input_registers[0]])
+                Instruction.get_random_slice(new_instr.parent.register_shapes[new_instr.input_registers[0]], new_instr.parent.torch_device)
             ]
             new_instr.area_operation_function = choice(AREA)
         else:
@@ -129,33 +130,42 @@ class Instruction:
                 for register in new_instr.input_registers
             ]
 
-        new_instr.output_register_indices = \
-            Instruction.get_random_index(new_instr.parent.register_shapes[new_instr.output_register])
+        new_instr.output_register_indices = Instruction.get_random_index(
+            new_instr.parent.register_shapes[new_instr.output_register]
+        )
         return new_instr
 
+    @staticmethod
+    def multi_slice(tensor: torch.Tensor, indices: Tuple[int], dim=1):
+        """Slice tensor in multiple dimensions"""
+        for _dim, _dim_value in enumerate(indices, dim):
+            tensor = torch.index_select(tensor, _dim, _dim_value)
+        return tensor
 
     @staticmethod
-    def get_random_slice(register_shape: Union[torch.Size, Tuple]) -> Tuple[int]:
+    def get_random_slice(register_shape: Union[torch.Size, Tuple], torch_device: torch.device) -> Tuple[int]:
         """Obtain random slice indices into a tensor with provided shape"""
-        return tuple(sorted(sample(range(dim), k=2)) for dim in register_shape)
+        return [torch.randint(0, dim, (randint(1, dim >> 1),), device=torch_device) for dim in register_shape]
 
     # pylint: disable=consider-using-generator
     @staticmethod
     def get_random_index(register_shape: Union[torch.Size, Tuple]) -> Tuple[int]:
         """Obtain random indices into a tensor with provided shape (indices to a single value)"""
-        return tuple([randint(0, dim - 1) for dim in register_shape])
-
+        return (...,) + tuple(randint(0, dim - 1) for dim in register_shape)
 
     def __repr__(self) -> str:
         """String representation of the istruction (single line of code)-ish"""
-        destination = f'{self.output_register}[{", ".join(map(str, self.output_register_indices))}]'
+        destination = f'{self.output_register}[{", ".join(map(str, self.output_register_indices[1:]))}]'
 
         operands = []
         for register, indices in zip(self.input_registers, self.input_register_indices):
-            if isinstance(indices[0], int):
-                operands.append(f'{register}[{",".join(map(str, indices))}]')
+            if isinstance(indices[0], type(...)):
+                operands.append(f'{register}[{",".join(map(str, indices[1:]))}]')
             else:
-                operands.append(f'{register}[{",".join(f"{_id[0]}:{_id[1]}" for _id in indices)}]')
+                _indices = []
+                for _id in indices:
+                    _indices.append(f'({",".join(_id.cpu().numpy().astype(str))})')
+                operands.append(f'{register}[{",".join(_indices)}')
 
         instruction = f'{destination} = {self.operation_function.__name__}({", ".join(operands)})'
 

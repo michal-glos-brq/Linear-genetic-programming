@@ -60,8 +60,10 @@ class Mutations:
         input_register_shape = instr.parent.register_shapes[instr.input_registers[input_registers_index]]
 
         # Randomly choose new index
-        get_indices_fn = Instruction.get_random_slice if instr.is_area_operation else Instruction.get_random_index
-        instr.input_register_indices[input_registers_index] = get_indices_fn(input_register_shape)
+        if instr.is_area_operation:
+            instr.input_register_indices[input_registers_index] = Instruction.get_random_slice(input_register_shape, instr.parent.torch_device)
+        else:
+            instr.input_register_indices[input_registers_index] = Instruction.get_random_index(input_register_shape)
 
 
     @staticmethod
@@ -81,7 +83,7 @@ class Mutations:
         if instr.is_area_operation:
             # Choose new indices from within the slice indexing tuples
             instr.input_register_indices[0] = \
-                tuple(randint(lb, hb - 1) for lb, hb in instr.input_register_indices[0])
+                tuple([...] + [choice(ids).item() for ids in instr.input_register_indices[0]])
             instr.area_operation_function = None
         else:
             # Area operations require UNARY primary operation
@@ -93,7 +95,7 @@ class Mutations:
 
             instr.area_operation_function = choice(AREA)
             register_shape = instr.parent.register_shapes[instr.input_registers[0]]
-            instr.input_register_indices[0] = Instruction.get_random_slice(register_shape)
+            instr.input_register_indices[0] = Instruction.get_random_slice(register_shape, instr.parent.torch_device)
 
         instr.is_area_operation = not instr.is_area_operation
 

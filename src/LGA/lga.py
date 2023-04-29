@@ -7,31 +7,30 @@ evaluation, and the evolution process. The LGA class supports spawning, mutation
 methods for evolving the programs.
 """
 
-from pprint import pformat, pprint
+from pickle import dump
 from numbers import Number
 from os import makedirs, path
-from pickle import dump
-from typing import Tuple, Iterable, Union, List
 from datetime import datetime
+from pprint import pformat, pprint
+from typing import Tuple, Iterable, Union, List
 
-import torch
 import numpy as np
+import torch
+from torch.nn.functional import softmax
 from tqdm import tqdm
 
-from utils.losses import accuracy_score, FITNESS_FUNCTIONS
-from utils.datasets import Dataset
-from LGA.program import Program
 from LGA.mutations import Mutations
 from LGA.operations import UNARY, BINARY, AREA
+from LGA.program import Program, TENSOR_FACOTRY
+from utils.datasets import Dataset
+from utils.other import PopulationNotEvaluatedError
+from utils.losses import accuracy_score, FITNESS_FUNCTIONS
 
-# torch.set_printoptions(profile="full")
-
-class PopulationNotEvaluatedError(Exception):
-    """Raised when the population was not evaluated and acessed based upon fitness values"""
 
 # pylint: disable=too-many-locals, too-many-arguments
 class LGA:
     """Implementation of linear genetic algorithm."""
+
     def __init__(
         self,
         dataset: Dataset,
@@ -85,6 +84,7 @@ class LGA:
             unary (Union[None, List[str]]): List of chosen unary functions, None if all. Defaults to None.
             area (Union[None, List[str]]): List of chosen area functions, None if all. Defaults to None.
         """
+        # Program loaded prior to LGA initialization, serves as a seed for single individual elite at 1st generation
         self.proto_program = program
         self.torch_device = dataset.torch_device
         self.object_shape = dataset.object_shape
@@ -92,26 +92,58 @@ class LGA:
         self.current_generation = 0
         self.fitness_fn = FITNESS_FUNCTIONS[fitness]
 
-        self.evaluated = False
-        # Proto-program is added later (if provided)
+        # Array of Program objects
         self.population = np.array([])
-        self.evaluated_fitness = np.array([])
-        self.best_programs_candidates = None
+        self.evaluated = False
+        self.evaluated_fitness = None
+        self.best_program_candidates = None
         self.run_fitness_history = None
 
+        self.elite_size_tensor = TENSOR_FACOTRY.IntTensor(1).fill_(elite)
+        self.elite_distribution_probability = TENSOR_FACOTRY.FloatTensor(elite).fill_(1)
+
+        # set LGA hyperparameters
         self._set_hyperparameters(
-            population, generations, min_instructions, max_instructions, hidden_register_shape,
-            mutation_p, crossover_p, area_instruction_p, program_grow_p, program_shrink_p,
-            mutate_registers, mutate_instructions, elite, equal_elite
+            population,
+            generations,
+            min_instructions,
+            max_instructions,
+            hidden_register_shape,
+            mutation_p,
+            crossover_p,
+            area_instruction_p,
+            program_grow_p,
+            program_shrink_p,
+            mutate_registers,
+            mutate_instructions,
+            elite,
+            equal_elite,
         )
         self._set_directories(model_dir, logging_dir)
         self._set_operations(unary, binary, area)
+        # Set self as lga for Program class
+        Program.lga = self
 
-
-    def _set_hyperparameters(self, population, generations, min_instructions, max_instructions, hidden_register_shape,
-                            mutation_p, crossover_p, area_instruction_p, program_grow_p, program_shrink_p, mutate_registers,
-                            mutate_instructions, elite_size, equal_elite):
-        """Set LGA hyperparameters"""
+    def _set_hyperparameters(
+        self,
+        population: int,
+        generations: int,
+        min_instructions: int,
+        max_instructions: int,
+        hidden_register_shape: Tuple[int],
+        mutation_p: int,
+        crossover_p: int,
+        area_instruction_p: int,
+        program_grow_p: int,
+        program_shrink_p: int,
+        mutate_registers: int,
+        mutate_instructions: int,
+        elite_size: int,
+        equal_elite: int,
+    ) -> None:
+        """
+        Configure LGA algorithm with hyperparameters
+        """
         self.population_bound = population
         self.generations = generations
         self.min_instructions = min_instructions
@@ -126,19 +158,19 @@ class LGA:
         self.area_instruction_p = area_instruction_p / 100.0
         self.program_grow_p = program_grow_p / 100.0
         self.shrink_p = program_shrink_p / 100.0
-        self.mutation_operation_probabilities = [self.crossover_p, self.mutation_p, self.program_grow_p, self.shrink_p]
+        self.mutation_operation_probabilities = np.array(
+            [self.crossover_p, self.mutation_p, self.program_grow_p, self.shrink_p]
+        )
 
-
-    def _set_directories(self, model_dir, logging_dir):
-        """Set and ensure model and loggin directories exist"""
+    def _set_directories(self, model_dir: str, logging_dir: str) -> None:
+        """Set and create model and loggin directories if not exist"""
         self.model_dir = model_dir
         self.logging_dir = logging_dir
         makedirs(model_dir, exist_ok=True)
         makedirs(logging_dir, exist_ok=True)
 
-
-    def _set_operations(self, unary, binary, area):
-        """Select operations of linear program"""
+    def _set_operations(self, unary: List[str], binary: List[str], area: List[str]) -> None:
+        """If specified - select algorithm operations"""
         # pylint: disable=global-statement
         global UNARY, BINARY, AREA
         if unary:
@@ -148,14 +180,17 @@ class LGA:
         if area:
             AREA = [A for A in AREA if A.__name__ in area]
 
-
     def fill_population(self) -> None:
         """Generate Program instances to meet the population criteria"""
         population_missing = self.population_bound - len(self.population)
-        self.population =  np.append(self.population, [self.new_individual() for _ in range(population_missing)])
+        self.population = np.append(self.population, [self.new_individual() for _ in range(population_missing)])
+        # Sort population according to its' population. Later sorted with fitness (stable sort).
+        self.population = self.population[
+            np.argsort(np.array([len(individual.instructions) for individual in self.population]))
+        ]
         self.evaluated = False
 
-
+    # pylint: disable=attribute-defined-outside-init
     def new_individual(self) -> Program:
         """
         Create a new Program individual based on LGA object properties
@@ -166,26 +201,26 @@ class LGA:
         if not self.evaluated:
             return Program.create_random_program(self)
 
-        elite_population, elite_fitness = self.elite_plus_fitness
-
-        if self.equal_elite:
-            elite_distribution_probability = np.ones_like(elite_fitness) / len(elite_population)
-        else:
-            elite_distribution_probability = np.array(elite_fitness) / sum(elite_fitness)
-
-        # Determine which mutation operations to perform based on their probabilities
+        # Determine which mutation operations to perform based on their probabilities (could be 4, could be 0)
         crossover, mutate, grow, shrink = self.mutation_operation_probabilities >= np.random.random(4)
 
         # When neither of following actions was chosen, create a random program for exploration
         if not crossover and not mutate and not grow and not shrink:
             return Program.create_random_program(self)
 
+        elite_population = self.population[: self.elite_size]
+        # If elite is equal, this vector is set in constructor
+        if not self.equal_elite:
+            self.elite_distribution_probability = softmax(self.evaluated_fitness[: self.elite_size_tensor], dim=0)
+
         # Initiate the new life
         if crossover:
-            father, mother = np.random.choice(elite_population, size=2, replace=False, p=elite_distribution_probability)
+            father_id, mother_id = self.elite_distribution_probability.multinomial(2, replacement=False)
+            father, mother = elite_population[father_id], elite_population[mother_id]
             offspring = Program.crossover(mother, father)
         else:
-            parent = np.random.choice(elite_population, p=elite_distribution_probability)
+            parent_id = self.elite_distribution_probability.multinomial(1)
+            parent = elite_population[parent_id]
             offspring = Program.transcription(parent)
 
         if mutate:
@@ -198,6 +233,11 @@ class LGA:
         # long live the newborn
         return offspring
 
+    def argsort_population_and_fitness(self, key: Iterable, **kwargs) -> None:
+        """Sort population and fitness tensor according to provided kay array"""
+        sorted_indices = torch.argsort(key, **kwargs)
+        self.evaluated_fitness = self.evaluated_fitness[sorted_indices]
+        self.population = self.population[sorted_indices.cpu().numpy()]
 
     def evaluate_population(self, in_data: torch.Tensor, gt_labels: torch.Tensor, use_percent: bool = False) -> None:
         """
@@ -209,32 +249,23 @@ class LGA:
             use_percent (bool, optional): Evaluate success in percents of correctly predicted objects. Defaults to False.
         """
         # Rank each program with it's fitness
-        self.evaluated_fitness = np.array([
+        self.evaluated_fitness = torch.stack(
+            [
                 individual.evaluate(in_data, gt_labels, accuracy_score if use_percent else self.fitness_fn)
                 for individual in self.population
-        ])
-        # Rank each individual with instruction lenght
-        instruction_lengths = [len(individual.instructions) for individual in self.population]
-
-        # Sort population and fitness according to instructions length (secondary key) and fitness (primary key)
-        sorted_indices = np.argsort(instruction_lengths)
-        self.population = self.population[sorted_indices]
-        self.evaluated_fitness = self.evaluated_fitness[sorted_indices]
-
-        sorted_indices = np.argsort(self.evaluated_fitness, kind="stable")[::-1]
-        self.population = self.population[sorted_indices]
-        self.evaluated_fitness = self.evaluated_fitness[sorted_indices]
+            ]
+        )
+        self.argsort_population_and_fitness(self.evaluated_fitness, stable=True, descending=True)
         self.evaluated = True
-
 
     def eliminate(self) -> None:
         """Eliminate inferior Programs which did not make it into the elite"""
         # Delete non-elite programs and retain only the elite
-        delete_programs = self.population[self.elite_size :]
-        self.population = self.population[: self.elite_size]
-        for delete_program in delete_programs:
-            del delete_program
-
+        self.population = np.delete(self.population, range(self.elite_size, self.population_bound))
+        # delete_programs = self.population[self.elite_size :]
+        # self.population = self.population[: self.elite_size]
+        # for delete_program in delete_programs:
+        #     del delete_program
 
     def train(self, dataset: Dataset, runs: int) -> None:
         """
@@ -244,7 +275,8 @@ class LGA:
             dataset (Dataset): Dataset providing test and eval data&labels
             runs (int): How many times to run the LGA
         """
-        self.best_programs_candidates = []
+        # Save loss data and best programs from each run for further analysis
+        self.best_program_candidates = []
         self.run_fitness_history = []
 
         for run in range(runs):
@@ -253,46 +285,47 @@ class LGA:
             self.current_generation = 0
             self.evaluated = False
             self.run_fitness_history.append([])
-            # Train the population
+
             with tqdm(range(self.generations), desc="Evolving ...") as pbar:
                 for _ in pbar:
                     self.current_generation += 1
                     self.fill_population()
                     self.evaluate_population(dataset.test_X, dataset.test_y)
-                    # Eliminate all individuals but the elite
                     self.eliminate()
                     self.run_fitness_history[run].append(self.evaluated_fitness[0])
-                    pbar.set_description(f"Evolving ... ({int(self.evaluated_fitness[0])} %)")
 
-            self.best_programs_candidates.append(self.best_program)
+                    pbar.set_description("Evolving ... ({:.5f})".format(self.evaluated_fitness[0]))
+
+            self.best_program_candidates.append(self.population)
 
         self.final_evaluation(dataset)
-
 
     def final_evaluation(self, dataset: Dataset) -> Program:
         """After training, evaluate best programs from each run and return the best performing one"""
         # Evaluate best population candidates on evaluation dataset, pickle the best program
-        self.population = np.array(self.best_programs_candidates)
+        self.population = np.array(self.best_program_candidates).flatten()
         self.evaluate_population(dataset.eval_X, dataset.eval_y, use_percent=True)
-        model_filename = f"{dataset.dataset_name}_{dataset.edge_size}_{self.evaluated_fitness[0]}_{datetime.now().isoformat()}.p"
+        model_filename = (
+            f"{dataset.dataset_name}_{dataset.edge_size}_{self.evaluated_fitness[0]}_{datetime.now().isoformat()}.p"
+        )
         model_path = path.join(self.model_dir, model_filename)
 
         with open(model_path, "wb") as file:
             dump(self.best_program, file)
 
         # Log fitness for all runs
-        fitness_log_filename = \
+        fitness_log_filename = (
             f"{dataset.dataset_name}_{dataset.edge_size}_runs{len(self.run_fitness_history)}_{datetime.now().isoformat()}.p"
+        )
         fitness_log_path = path.join(self.logging_dir, fitness_log_filename)
 
         with open(fitness_log_path, "wb") as file:
             dump(self.run_fitness_history, file)
 
-        print('Results of evaluated best program candidates:')
+        print("Results of evaluated best program candidates:")
         pprint(self.evaluated_fitness)
-        print('The best program is:')
+        print("The best program is:")
         pprint(self.best_program)
-
 
     @property
     def best_program(self) -> Program:
@@ -301,15 +334,8 @@ class LGA:
             raise PopulationNotEvaluatedError("Tried to get the best program without evaluation of fitness!")
         return self.population[0]
 
-
-    @property
-    def elite_plus_fitness(self) -> Tuple[Union[Iterable[Program], Iterable[Number]]]:
-        """Return the array of elite individuals and their fitness."""
-        return self.population[: self.elite_size], self.evaluated_fitness[: self.elite_size]
-
-
     def to_dict(self):
-        '''Create JSON-dumpable dictionary with data needed for further analysis'''
+        """Create JSON-dumpable dictionary with data needed for further analysis"""
         return {
             "max-population": self.population_bound,
             "elite-size": self.elite_size,
@@ -327,9 +353,8 @@ class LGA:
             "mutate-instructions": self.mutate_instructions,
             "UNARY": [U.__name__ for U in UNARY],
             "BINARY": [B.__name__ for B in BINARY],
-            "AREA": [A.__name__ for A in AREA]
+            "AREA": [A.__name__ for A in AREA],
         }
-
 
     def __repr__(self) -> str:
         """String representation of program and it's instructions (human friendly)"""
