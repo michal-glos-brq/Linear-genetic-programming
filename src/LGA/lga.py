@@ -7,8 +7,8 @@ evaluation, and the evolution process. The LGA class supports spawning, mutation
 methods for evolving the programs.
 """
 
+from math import prod
 from pickle import dump
-from numbers import Number
 from os import makedirs, path
 from datetime import datetime
 from pprint import pformat, pprint
@@ -76,8 +76,8 @@ class LGA:
             program_shrink_p (int): Probability (in %) for a program to shrink (an instruction). Defaults to 25.
             mutation_p (int): Probability (in %) for a program to mutate. Defaults to 25.
             crossover_p (int): Probability (in %) for a program to crossover. Defaults to 25.
-            mutate_instructions (int): Number of instructions to mutate WHEN mutation occurs. Defaults to 1.
-            mutate_registers (int): Registers to mutate WHEN mutation occurs. Defaults to 1.
+            mutate_instructions (int): Max number of instructions to mutate WHEN mutation occurs. Defaults to 1.
+            mutate_registers (int): Max negisters to mutate WHEN mutation occurs. Defaults to 1.
             model_dir (str): Path to the directory for saving models. Defaults to "models".
             logging_dir (str): Path to the directory for logging. Defaults to "logging".
             binary (Union[None, List[str]]): List of chosen binary functions, None if all. Defaults to None.
@@ -121,8 +121,7 @@ class LGA:
         )
         self._set_directories(model_dir, logging_dir)
         self._set_operations(unary, binary, area)
-        # Set self as lga for Program class
-        Program.lga = self
+        self._set_turboboost_properties()
 
     def _set_hyperparameters(
         self,
@@ -179,6 +178,22 @@ class LGA:
             BINARY = [B for B in BINARY if B.__name__ in binary]
         if area:
             AREA = [A for A in AREA if A.__name__ in area]
+
+    def _set_turboboost_properties(self) -> None:
+        """
+        Initialize properties for Program and Instruction to read
+
+        Not passing arguments here and there, also not creating millions of instances of some attributes,
+        self (LGA instance) will be acessable from each Instruction and Program instance
+        """
+        Program.lga = self
+        self.register_shapes_dict = {
+            "input_registers": self.object_shape,
+            "hidden_registers": self.hidden_register_shape,
+            "result_registers": (self.num_of_classes,),
+        }
+        self.hidden_register_count = prod(self.hidden_register_shape)
+        self.result_register_count = self.num_of_classes
 
     def fill_population(self) -> None:
         """Generate Program instances to meet the population criteria"""
@@ -262,10 +277,6 @@ class LGA:
         """Eliminate inferior Programs which did not make it into the elite"""
         # Delete non-elite programs and retain only the elite
         self.population = np.delete(self.population, range(self.elite_size, self.population_bound))
-        # delete_programs = self.population[self.elite_size :]
-        # self.population = self.population[: self.elite_size]
-        # for delete_program in delete_programs:
-        #     del delete_program
 
     def train(self, dataset: Dataset, runs: int) -> None:
         """
@@ -284,17 +295,36 @@ class LGA:
             self.population = np.array([self.proto_program] if self.proto_program else [])
             self.current_generation = 0
             self.evaluated = False
-            self.run_fitness_history.append([])
+            self.run_fitness_history.append(
+                (
+                    {
+                        "fitness": [],
+                        "instr-len": [],
+                    }
+                )
+            )
 
-            with tqdm(range(self.generations), desc="Evolving ...") as pbar:
+            with tqdm(range(self.generations), desc="Evolving ...", ncols=100) as pbar:
                 for _ in pbar:
                     self.current_generation += 1
+                    # Create new programs until population criterion met
                     self.fill_population()
+                    # Evaluate population on test dataset
                     self.evaluate_population(dataset.test_X, dataset.test_y)
+                    # Eliminate programs which could not make it into the elite
                     self.eliminate()
-                    self.run_fitness_history[run].append(self.evaluated_fitness[0])
+                    # Log fitness of best programs throughout generations
+                    self.run_fitness_history[run]["fitness"].append(self.evaluated_fitness[0])
+                    # Log instruction length of best programs throughout generations
+                    self.run_fitness_history[run]["instr-len"].append(len(self.best_program.instructions))
+                    pbar.set_description(
+                        f"Evolving ... ({self.evaluated_fitness[0]:.5f}) ({len(self.best_program.instructions)})"
+                    )
 
-                    pbar.set_description("Evolving ... ({:.5f})".format(self.evaluated_fitness[0]))
+                # fitness is list of single-element tensors, instruction lengths is list of ints
+                # make both a numpy array
+                self.run_fitness_history[run]["fitness"] = torch.stack(self.run_fitness_history[run]["fitness"]).cpu().numpy()
+                self.run_fitness_history[run]["instr-len"] = np.array(self.run_fitness_history[run]["instr-len"])
 
             self.best_program_candidates.append(self.population)
 
@@ -305,27 +335,34 @@ class LGA:
         # Evaluate best population candidates on evaluation dataset, pickle the best program
         self.population = np.array(self.best_program_candidates).flatten()
         self.evaluate_population(dataset.eval_X, dataset.eval_y, use_percent=True)
-        model_filename = (
-            f"{dataset.dataset_name}_{dataset.edge_size}_{self.evaluated_fitness[0]}_{datetime.now().isoformat()}.p"
-        )
-        model_path = path.join(self.model_dir, model_filename)
+        timestamp = datetime.now().isoformat()
+        filename = f"{dataset.dataset_name}_{dataset.edge_size}_{self.evaluated_fitness[0]}_{timestamp}.p"
+        model_path = path.join(self.model_dir, filename)
 
         with open(model_path, "wb") as file:
-            dump(self.best_program, file)
+            self.best_program.pickle(file)
 
-        # Log fitness for all runs
-        fitness_log_filename = (
-            f"{dataset.dataset_name}_{dataset.edge_size}_runs{len(self.run_fitness_history)}_{datetime.now().isoformat()}.p"
-        )
-        fitness_log_path = path.join(self.logging_dir, fitness_log_filename)
+        fitness_log_path = path.join(self.logging_dir, filename)
 
         with open(fitness_log_path, "wb") as file:
             dump(self.run_fitness_history, file)
 
+        self.print_results(model_path, fitness_log_path)
+
+    def print_results(self, model_path: str, logging_path: str) -> None:
+        """Print the final message after algorithm evaluation"""
         print("Results of evaluated best program candidates:")
         pprint(self.evaluated_fitness)
         print("The best program is:")
-        pprint(self.best_program)
+        print('\n'.join(self.best_program.instructions))
+        torch.set_printoptions(profile="full")
+        print("Hidden register initialization values:")
+        pprint(self.best_program.hidden_register_initial_values)
+        print("Result register initialization values:")
+        pprint(self.best_program.result_register_initial_values)
+        torch.set_printoptions(profile="default")
+        print(f"The best program was pickled into file: {model_path}")
+        print(f"The fitness and etc. history was pickled into file: {logging_path}")
 
     @property
     def best_program(self) -> Program:
@@ -334,26 +371,31 @@ class LGA:
             raise PopulationNotEvaluatedError("Tried to get the best program without evaluation of fitness!")
         return self.population[0]
 
+    def register_shapes(self, register: str):
+        """Return register shape given register name"""
+        return self.register_shapes_dict[register]
+
     def to_dict(self):
         """Create JSON-dumpable dictionary with data needed for further analysis"""
         return {
-            "max-population": self.population_bound,
-            "elite-size": self.elite_size,
-            "elite-equal": self.equal_elite,
-            "generations to evolve": self.generations,
-            "max-i": self.max_instructions,
-            "min-i": self.min_instructions,
-            "mutation-p": self.mutation_p,
-            "crossover-p": self.crossover_p,
-            "grow-p": self.program_grow_p,
-            "area-p": self.area_instruction_p,
-            "fitness-fn": self.fitness_fn.__name__,
-            "hidden-reg-shape": self.hidden_register_shape,
-            "mutate-registers": self.mutate_registers,
-            "mutate-instructions": self.mutate_instructions,
             "UNARY": [U.__name__ for U in UNARY],
             "BINARY": [B.__name__ for B in BINARY],
             "AREA": [A.__name__ for A in AREA],
+            "area-p": self.area_instruction_p,
+            "crossover-p": self.crossover_p,
+            "mutation-p": self.mutation_p,
+            "grow-p": self.program_grow_p,
+            "shrink-p": self.shrink_p,
+            "elite-size": self.elite_size,
+            "elite-equal": self.equal_elite,
+            "fitness-fn": self.fitness_fn.__name__,
+            "hidden-reg-shape": self.hidden_register_shape,
+            "generations": self.generations,
+            "max-i": self.max_instructions,
+            "min-i": self.min_instructions,
+            "mutate-registers": self.mutate_registers,
+            "mutate-instructions": self.mutate_instructions,
+            "max-population": self.population_bound,
         }
 
     def __repr__(self) -> str:

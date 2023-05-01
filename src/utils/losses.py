@@ -5,7 +5,8 @@ from typing import Dict, Callable
 import torch
 from torch.nn.functional import cross_entropy, softmax
 
-CROSS_ENTROPY_BASE = 10
+# Normalizing constant for cross entropy
+CROSS_ENTROPY_BASE = 3
 
 def accuracy_score(result_registers: torch.Tensor, ground_truth_labels: torch.Tensor) -> float:
     """

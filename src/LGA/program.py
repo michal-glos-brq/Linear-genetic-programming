@@ -6,66 +6,38 @@ It also implements program evaluation.
 """
 
 import pickle
-from math import prod
 from numbers import Number
 from pprint import pformat
 from random import random, randint
-from typing import Iterable, Union, Callable, Dict, Tuple
+from typing import Union, Callable, Dict, Tuple
+from io import TextIOWrapper
 
 import torch
 
 from LGA.instruction import Instruction
 from utils.other import InstructionIndexError, ProgramRegisterShapeError
 
-TENSOR_FACOTRY = (torch.cuda if torch.cuda.is_available() else torch)
+TENSOR_FACOTRY = torch.cuda if torch.cuda.is_available() else torch
 
 
 # pylint: disable=too-many-arguments
 class Program:
     """
     Representation of linear program - a list of Instruction instances
-    
+
     Attributes:
         instructions (List[Instruction]): List of linear instructions.
-        input_register_shape (Iterable[int]): Shape of input register field.
-        hidden_register_shape (Iterable[int]): Shape of hidden (working) memory.
         hidden_register_initial_values (torch.Tensor): Initialization values of hidden (working) memory.
-        result_register_shape (Iterable[int]): Shape of result vector memory.
         result_register_initial_values (torch.Tensor): Initialization values of result vector memory.
-        register_shapes (Dict[str, Tuple[int]]): Mapping of register names to their shapes.
     """
+
     # Linear Genetic Algorithm
     lga = None
 
-    def __init__(
-        self,
-        min_instructions: int,
-        max_instructions: int,
-        object_shape: Iterable[int],
-        result_register_shape: Iterable[int],
-        hidden_register_shape: Iterable[int],
-        area_instruction_p: Number,
-        torch_device: Number,
-    ) -> None:
+    def __init__(self) -> None:
         """
         Initialize the Program class, create register initial states and instructions
-
-        Args:
-            max_instructions (int): Maximal length of program (number of instructions).
-            min_instructions (int): Minimal length of program (number of instructions).
-            object_shape (Iterable[int]): Shape of objects to be classified.
-            result_register_shape (Iterable[int]): Output register shape / number of classes.
-            hidden_register_shape (Iterable[int]): Shape of hidden register field.
-            area_instruction_p (Number): Probability of instruction to process a slice instead of a single value.
-            torch_device (torch.device): Pytorch device to store tensors.
         """
-        self.min_instructions = min_instructions
-        self.max_instructions = max_instructions
-
-        self.input_register_shape = object_shape
-        self.hidden_register_shape = hidden_register_shape
-        self.result_register_shape = result_register_shape
-
         self.hidden_register_initial_values = None
         self.result_register_initial_values = None
         self.input_registers = None
@@ -74,36 +46,37 @@ class Program:
 
         self.instructions = []
 
-        self.torch_device = torch_device
-        self.area_instruction_p = area_instruction_p
-
-        self.register_shapes = {
-            "input_registers": self.input_register_shape,
-            "hidden_registers": self.hidden_register_shape,
-            "result_registers": self.result_register_shape,
-        }
-
-        self.hidden_register_count = prod(hidden_register_shape)
-        self.result_register_count = prod(result_register_shape)
-
     @staticmethod
-    def load_program(path: str, reg_shape: Tuple[int]) -> 'Program':
+    def load_program(path: str, reg_shape: Tuple[int]) -> "Program":
         """
         Load program from pickled file and assert configuration \
         complience with current dataset configuration
         Args:
             path:   Path to pickled Program instance
         """
+        p = Program
         with open(path, "rb") as file:
-            program = pickle.load(file)
+            p.instructions, p.hidden_register_initial_values, p.result_register_initial_values, _ = pickle.load(file)
 
-        if not program.hidden_regfiled.shape == reg_shape:
+        if not p.hidden_register_initial_values.shape == reg_shape:
             raise ProgramRegisterShapeError(
-                f"Loaded programs hidden register fields ({', '.join(str(dim) for dim in program.hidden_regfiled.shape)})"
+                f"Loaded programs hidden register fields ({', '.join(str(dim) for dim in p.hidden_register_initial_values.shape)})"
                 f" has to be equal to CLI option provided ({', '.join(str(dim) for dim in reg_shape)})!"
             )
 
-        return program
+        return p
+
+    def pickle(self, file: TextIOWrapper) -> None:
+        """Pickle program register initial values and instructions into a tuple"""
+        pickle.dump(
+            (
+                self.instructions,
+                self.hidden_register_initial_values,
+                self.result_register_initial_values,
+                self.lga.to_dict(),
+            ),
+            file,
+        )
 
     @staticmethod
     def create_random_program(lga) -> "Program":
@@ -115,24 +88,16 @@ class Program:
         Returns:
             Program: Program instance with random genome
         """
-        new_individual = Program(
-            lga.max_instructions,
-            lga.min_instructions,
-            lga.object_shape,
-            (lga.num_of_classes,),
-            lga.hidden_register_shape,
-            lga.area_instruction_p,
-            lga.torch_device,
-        )
+        new_individual = Program()
 
         new_individual.hidden_register_initial_values = torch.normal(
-            0, 1, new_individual.hidden_register_shape, device=lga.torch_device
+            0, 1, new_individual.lga.hidden_register_shape, device=lga.torch_device
         )
         new_individual.result_register_initial_values = torch.normal(
-            0, 1, new_individual.result_register_shape, device=lga.torch_device
+            0, 1, (new_individual.lga.num_of_classes,), device=lga.torch_device
         )
 
-        new_individual.instructions = [Instruction.random(new_individual) for _ in range(new_individual.max_instructions)]
+        new_individual.instructions = [Instruction.random(new_individual) for _ in range(lga.min_instructions)]
 
         return new_individual
 
@@ -147,19 +112,11 @@ class Program:
         Returns:
             offspring (Program): New program made from mother and father programs
         """
-        new_individual = Program(
-            mother.min_instructions,
-            mother.max_instructions,
-            mother.input_register_shape,
-            mother.result_register_shape,
-            mother.hidden_register_shape,
-            mother.area_instruction_p,
-            mother.torch_device,
-        )
+        new_individual = Program()
 
         # Crossover of registers
-        result_register_mask = TENSOR_FACOTRY.FloatTensor(*new_individual.result_register_shape).uniform_() < 0.5
-        hidden_register_mask = TENSOR_FACOTRY.FloatTensor(*new_individual.hidden_register_shape).uniform_() < 0.5
+        result_register_mask = TENSOR_FACOTRY.FloatTensor(new_individual.lga.num_of_classes).uniform_() < 0.5
+        hidden_register_mask = TENSOR_FACOTRY.FloatTensor(*new_individual.lga.hidden_register_shape).uniform_() < 0.5
 
         new_individual.result_register_initial_values = (result_register_mask * mother.result_register_initial_values) + (
             ~result_register_mask * father.result_register_initial_values
@@ -188,15 +145,7 @@ class Program:
         Return:
             offspring (Program): New program instance equivalent to it's parent
         """
-        new_individual = Program(
-            parent.min_instructions,
-            parent.max_instructions,
-            parent.input_register_shape,
-            parent.result_register_shape,
-            parent.hidden_register_shape,
-            parent.area_instruction_p,
-            parent.torch_device,
-        )
+        new_individual = Program()
 
         new_individual.result_register_initial_values = parent.result_register_initial_values.clone()
         new_individual.hidden_register_initial_values = parent.hidden_register_initial_values.clone()
@@ -204,7 +153,6 @@ class Program:
         new_individual.instructions = [instr.copy(new_individual) for instr in parent.instructions]
 
         return new_individual
-
 
     def delete_instruction(self, idx: Union[None, int] = None) -> None:
         """Delete instruction on index idx, delete random instruction if idx is None"""
@@ -219,15 +167,15 @@ class Program:
 
     def grow(self) -> None:
         """Add random instruction. Also remove another when the max instruction limit would be exceeded"""
-        if len(self.instructions) >= self.min_instructions:
+        if len(self.instructions) >= self.lga.max_instructions:
             self.delete_instruction()
-        self.instructions.append(Instruction.random(self))
+        self.instructions.insert(randint(0, len(self.instructions)), Instruction.random(self))
 
     def shrink(self) -> None:
         """Delete random instruction. Also add another when the min instruction limit would be exceeded"""
         self.delete_instruction()
-        if len(self.instructions) < self.max_instructions:
-            self.instructions.append(Instruction.random(self))
+        if len(self.instructions) < self.lga.min_instructions:
+            self.instructions.insert(randint(0, len(self.instructions)), Instruction.random(self))
 
     # pylint: disable=invalid-name
     def evaluate(
@@ -243,7 +191,7 @@ class Program:
         Returns:
             torch.Tensor: Fitness score
         """
-        self.input_registers = X    # Programs can't write into input register, therfore no cloning
+        self.input_registers = X  # Programs can't write into input register, therfore no cloning
 
         self.hidden_registers = self.hidden_register_initial_values.repeat(
             X.size(0), *(len(self.hidden_register_initial_values.shape) * [1])
@@ -258,19 +206,22 @@ class Program:
         del self.hidden_registers
         del self.result_registers
 
-        return result
+        self.input_registers = None
+        self.result_registers = None
+        self.hidden_registers = None
 
+        return result
 
     @property
     def _info_dict(self) -> Dict[str, Dict]:
         """Obtain information about Program instance in a dictionary"""
         return {
             "Hidden register field": {
-                "shape": self.hidden_register_shape,
+                "shape": self.lga.hidden_register_shape,
                 "init_values": self.hidden_register_initial_values,
             },
             "Result register field": {
-                "shape": self.result_register_shape,
+                "shape": (self.lga.num_of_classes,),
                 "init_values": self.result_register_initial_values,
             },
             "Instructions": [f"{i}: {instr}" for i, instr in enumerate(self.instructions, 1)],

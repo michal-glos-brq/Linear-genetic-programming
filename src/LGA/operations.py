@@ -35,42 +35,48 @@ def times_minus1(tensor: torch.Tensor) -> torch.Tensor:
     return tensor * (-1)
 
 
-#pylint disable=comparison-with-itself
+### This monstrosity here is only for instruction pickle purposes
+
+# pylint disable=comparison-with-itself
 def safe_division(tensor1: torch.Tensor, tensor2: torch.Tensor) -> torch.Tensor:
     """Safe division"""
     result = torch.div(tensor1, tensor2)
-    return torch.nan_to_num(result, posinf=0., neginf=0.)
+    return torch.nan_to_num(result, posinf=0.0, neginf=0.0)
 
-#pylint disable=comparison-with-itself
+
+# pylint disable=comparison-with-itself
 def safe_power(tensor1: torch.Tensor, tensor2: torch.Tensor) -> torch.Tensor:
     """Safe power"""
     result = torch.pow(tensor1, tensor2)
-    return torch.nan_to_num(result, posinf=0., neginf=0.)
+    return torch.nan_to_num(result, posinf=0.0, neginf=0.0)
 
-#pylint disable=comparison-with-itself
+
+# pylint disable=comparison-with-itself
 def safe_exp(tensor1: torch.Tensor) -> torch.Tensor:
     """Safe exp"""
     result = torch.exp(tensor1)
-    return torch.nan_to_num(result, posinf=0., neginf=0.)
+    return torch.nan_to_num(result, posinf=0.0, neginf=0.0)
 
-#pylint disable=comparison-with-itself
+
+# pylint disable=comparison-with-itself
 def safe_logarithm(tensor: torch.Tensor) -> torch.Tensor:
     """Safe division"""
     result = torch.log(tensor)
-    return torch.nan_to_num(result, posinf=0., neginf=0.)
+    return torch.nan_to_num(result, posinf=0.0, neginf=0.0)
 
-#pylint disable=comparison-with-itself
+
+# pylint disable=comparison-with-itself
 def safe_tan(tensor: torch.Tensor) -> torch.Tensor:
     """Safe division"""
     result = torch.tan(tensor)
-    return torch.nan_to_num(result, posinf=0., neginf=0.)
+    return torch.nan_to_num(result, posinf=0.0, neginf=0.0)
 
 
-#pylint disable=comparison-with-itself
+# pylint disable=comparison-with-itself
 def safe_square_root(*tensors: Iterable[torch.Tensor]) -> torch.Tensor:
     """Safe division"""
     result = torch.sqrt(*tensors)
-    return torch.nan_to_num(result, posinf=0., neginf=0.)
+    return torch.nan_to_num(result, posinf=0.0, neginf=0.0)
 
 
 # Binary operations

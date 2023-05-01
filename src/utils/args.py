@@ -92,8 +92,8 @@ def parse_arguments() -> Namespace:
         "-pa", "--p-area", type=int, default=10,
         help="Specify the probability (in %) of an instruction working with a tensor slice instead of singular value",
     )
-    parser.add_argument("--mutate-regs", type=int, default=1, help="Specify the number of register values to mutate (default: 1)")
-    parser.add_argument("--mutate-inst", type=int, default=1, help="Specify the number of instructions to mutate (default: 1)")
+    parser.add_argument("--mutate-regs", type=int, default=1, help="Specify the max. number of register values to mutate (default: 1)")
+    parser.add_argument("--mutate-inst", type=int, default=1, help="Specify the max. number of instructions to mutate (default: 1)")
     parser.add_argument("--elite", type=int, default=3, help="Elite to be kept after selection")
     parser.add_argument(
         "--elite-equal", action="store_true",

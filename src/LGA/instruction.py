@@ -27,7 +27,6 @@ class Instruction:
         area_operation_function (Callable): The area operation, None if area is False.
 
         Note: Indices (not slices) into register Tensors always start with ellipsis (...)
-
     """
 
     def __init__(self, parent) -> None:
@@ -50,17 +49,19 @@ class Instruction:
     def obtain_operands(self) -> List[torch.Tensor]:
         """Obtain instruction operands (value Tensors)"""
         if self.is_area_operation:
+            # Operands are subtensors
             return [
                 Instruction.multi_slice(getattr(self.parent, register), indices)
                 for indices, register in zip(self.input_register_indices, self.input_registers)
             ]
+        # Otherwise, operands are single values
         return [
             getattr(self.parent, register)[indices]
             for indices, register in zip(self.input_register_indices, self.input_registers)
         ]
 
     def compute(self, operands: List[torch.Tensor]) -> torch.Tensor:
-        """Perform calculations, replance NaN with 0"""
+        """Perform instruction calculations"""
         result = self.operation_function(*operands)
 
         if self.is_area_operation:
@@ -105,7 +106,7 @@ class Instruction:
     def random(parent) -> "Instruction":
         """Generate a random Instruction object instance"""
         new_instr = Instruction(parent)
-        new_instr.is_area_operation = true_with_probability(parent.area_instruction_p)
+        new_instr.is_area_operation = true_with_probability(parent.lga.area_instruction_p)
 
         is_unary_operation = random() < UNARY_OP_RATIO or new_instr.is_area_operation
         new_instr.operation_parity = 1 if is_unary_operation else 2
@@ -121,17 +122,20 @@ class Instruction:
         if new_instr.is_area_operation:
             # For each register and dimenstion obtain 2 ascending unique indices in bounds of tensor shape
             new_instr.input_register_indices = [
-                Instruction.get_random_slice(new_instr.parent.register_shapes[new_instr.input_registers[0]], new_instr.parent.torch_device)
+                Instruction.get_random_slice(
+                    new_instr.parent.lga.register_shapes_dict[new_instr.input_registers[0]],
+                    new_instr.parent.lga.torch_device,
+                )
             ]
             new_instr.area_operation_function = choice(AREA)
         else:
             new_instr.input_register_indices = [
-                Instruction.get_random_index(new_instr.parent.register_shapes[register])
+                Instruction.get_random_index(new_instr.parent.lga.register_shapes_dict[register])
                 for register in new_instr.input_registers
             ]
 
         new_instr.output_register_indices = Instruction.get_random_index(
-            new_instr.parent.register_shapes[new_instr.output_register]
+            new_instr.parent.lga.register_shapes_dict[new_instr.output_register]
         )
         return new_instr
 

@@ -2,6 +2,7 @@
 This python module provides all necessary operations for linear program mutation - 
     it's registers' initial values and instructions.
 """
+
 from random import random, choice, randint, sample
 
 import torch
@@ -10,6 +11,7 @@ from LGA.program import Program
 from LGA.instruction import Instruction
 from LGA.operations import UNARY, BINARY, AREA, INPUT_REGISTERS, OUTPUT_REGISTERS, UNARY_OP_RATIO
 from utils.other import true_with_probability
+
 
 class Mutations:
     """Class implementing static methods for mutation operations."""
@@ -41,9 +43,8 @@ class Mutations:
                 instr.operation_parity = 2
                 instr.input_registers.append(choice(INPUT_REGISTERS))
                 instr.input_register_indices.append(
-                    Instruction.get_random_index(instr.parent.register_shapes[instr.input_registers[1]])
+                    Instruction.get_random_index(instr.parent.lga.register_shapes_dict[instr.input_registers[1]])
                 )
-
 
     @staticmethod
     def mutate_input_registers(instr: Instruction) -> None:
@@ -57,14 +58,15 @@ class Mutations:
         # Choose register on which the mutation is performed
         input_registers_index = randint(0, instr.operation_parity - 1)
         instr.input_registers[input_registers_index] = choice(INPUT_REGISTERS)
-        input_register_shape = instr.parent.register_shapes[instr.input_registers[input_registers_index]]
+        input_register_shape = instr.parent.lga.register_shapes_dict[instr.input_registers[input_registers_index]]
 
         # Randomly choose new index
         if instr.is_area_operation:
-            instr.input_register_indices[input_registers_index] = Instruction.get_random_slice(input_register_shape, instr.parent.torch_device)
+            instr.input_register_indices[input_registers_index] = Instruction.get_random_slice(
+                input_register_shape, instr.parent.lga.torch_device
+            )
         else:
             instr.input_register_indices[input_registers_index] = Instruction.get_random_index(input_register_shape)
-
 
     @staticmethod
     def mutate_output_register(instr: Instruction) -> None:
@@ -73,17 +75,15 @@ class Mutations:
         instr.output_register = choice(OUTPUT_REGISTERS)
 
         # Randomly generate index into that new register
-        register_shape = instr.parent.register_shapes[instr.output_register]
+        register_shape = instr.parent.lga.register_shapes_dict[instr.output_register]
         instr.output_register_indices = Instruction.get_random_index(register_shape)
-
 
     @staticmethod
     def mutate_area(instr: Instruction) -> None:
         """From area instruction, create non-area instr and vice versa"""
         if instr.is_area_operation:
             # Choose new indices from within the slice indexing tuples
-            instr.input_register_indices[0] = \
-                tuple([...] + [choice(ids).item() for ids in instr.input_register_indices[0]])
+            instr.input_register_indices[0] = tuple([...] + [choice(ids).item() for ids in instr.input_register_indices[0]])
             instr.area_operation_function = None
         else:
             # Area operations require UNARY primary operation
@@ -94,11 +94,10 @@ class Mutations:
                 instr.input_register_indices = instr.input_register_indices[:1]
 
             instr.area_operation_function = choice(AREA)
-            register_shape = instr.parent.register_shapes[instr.input_registers[0]]
-            instr.input_register_indices[0] = Instruction.get_random_slice(register_shape, instr.parent.torch_device)
+            register_shape = instr.parent.lga.register_shapes_dict[instr.input_registers[0]]
+            instr.input_register_indices[0] = Instruction.get_random_slice(register_shape, instr.parent.lga.torch_device)
 
         instr.is_area_operation = not instr.is_area_operation
-
 
     @staticmethod
     def mutate_instruction(instr: Instruction) -> None:
@@ -112,14 +111,13 @@ class Mutations:
              - Area operation function (if instr operates with tensor slices)
         """
         # Area mutation has fixed probability in order to keep area operations in desired number
-        if true_with_probability(instr.parent.area_instruction_p):
+        if true_with_probability(instr.parent.lga.area_instruction_p):
             Mutations.mutate_area(instr)
         else:
             mutation_function = choice(
                 [Mutations.mutate_input_registers, Mutations.mutate_output_register, Mutations.mutate_operation]
             )
             mutation_function(instr)
-
 
     @staticmethod
     def mutate_program(program: Program, registers_to_mutate: int, instructions_to_mutate: int) -> None:
@@ -130,20 +128,29 @@ class Mutations:
             registers_to_mutate (int):      Number of registers to mutate
             instructions_to_mutate (int):   Number of instructions to mutate
         """
+        # Introduce random element
+        registers_to_mutate = randint(1, registers_to_mutate)
+        instructions_to_mutate = randint(1, instructions_to_mutate)
         # Obtain number of registers for each registerfield initialization values to be mutated
-        register_sizes = torch.FloatTensor([program.hidden_register_count, program.result_register_count])
-        res_reg_mutations = min(register_sizes.multinomial(registers_to_mutate, replacement=True).sum(), program.result_register_count)
-        hid_reg_mutations = min(registers_to_mutate - res_reg_mutations, program.hidden_register_count)
+        register_sizes = torch.FloatTensor([program.lga.hidden_register_count, program.lga.result_register_count])
+        res_reg_mutations = min(
+            register_sizes.multinomial(registers_to_mutate, replacement=True).sum(), program.lga.result_register_count
+        )
+        hid_reg_mutations = min(registers_to_mutate - res_reg_mutations, program.lga.hidden_register_count)
 
         # Add samples from normal(0,1) to selected registers
         if hid_reg_mutations:
-            hidden_register_indices = torch.randint(program.hidden_register_count, (hid_reg_mutations,), device=program.torch_device)
-            hidden_register_mutation_values = torch.randn((hid_reg_mutations,), device=program.torch_device)
+            hidden_register_indices = torch.randint(
+                program.lga.hidden_register_count, (hid_reg_mutations,), device=program.lga.torch_device
+            )
+            hidden_register_mutation_values = torch.randn((hid_reg_mutations,), device=program.lga.torch_device)
             program.hidden_register_initial_values.view(-1)[hidden_register_indices] += hidden_register_mutation_values
 
         if res_reg_mutations:
-            result_register_indices = torch.randint(program.result_register_count, (res_reg_mutations,), device=program.torch_device)
-            result_register_mutation_values = torch.randn((res_reg_mutations,), device=program.torch_device)
+            result_register_indices = torch.randint(
+                program.lga.result_register_count, (res_reg_mutations,), device=program.lga.torch_device
+            )
+            result_register_mutation_values = torch.randn((res_reg_mutations,), device=program.lga.torch_device)
             program.result_register_initial_values.view(-1)[result_register_indices] += result_register_mutation_values
 
         # Randomly choose instructions_to_mutate Instruction instances for mutation
