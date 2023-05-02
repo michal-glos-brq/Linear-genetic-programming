@@ -103,7 +103,7 @@ UNARY: List[Callable[[torch.Tensor], torch.Tensor]] = [
 ]
 
 # Area operations (Reducing area to single value, unary operation has to preceed it)
-AREA: List[Callable[[], torch.Tensor]] = [torch.mean, torch.sum, torch.prod]
+AREA: List[Callable[[], torch.Tensor]] = [torch.mean, torch.sum, torch.prod, torch.min, torch.max]
 
 UNARY_OP_RATIO = len(UNARY) / (len(BINARY) + len(UNARY))
 

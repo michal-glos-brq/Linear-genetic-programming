@@ -354,7 +354,8 @@ class LGA:
         print("Results of evaluated best program candidates:")
         pprint(self.evaluated_fitness)
         print("The best program is:")
-        print('\n'.join(self.best_program.instructions))
+        program_instructions = [repr(instr) for instr in self.best_program.instructions]
+        print('\n'.join(program_instructions))
         torch.set_printoptions(profile="full")
         print("Hidden register initialization values:")
         pprint(self.best_program.hidden_register_initial_values)

@@ -54,7 +54,7 @@ class Program:
         Args:
             path:   Path to pickled Program instance
         """
-        p = Program
+        p = Program()
         with open(path, "rb") as file:
             p.instructions, p.hidden_register_initial_values, p.result_register_initial_values, _ = pickle.load(file)
 
