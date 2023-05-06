@@ -1,2 +1,15 @@
-# Linear-genetic-programming
-Pytorch implementation of linear genetic programming for object classification (Academic project)
+   -  `-pg`, `--p`-grow: Specify the chance (in %) to incrementally increase the instruction count of a program (default: 25)
+   -  `-ps`, `--p`-shrink: Specify the chance (in %) to incrementally decrease the instruction count of a program (default: 25)
+   -  `-pm`, `--p`-mutate: Specify the chance (in %) of an individual program mutating
+   -  `-pc`, `--p`-cross: Specify the chance (in %) of crossover when creating new offspring
+   -  `-pa`, `--p`-area: Specify the probability (in %) of an instruction working with a tensor slice instead of singular value
+   -  `--mutate`-regs: Specify the max. number of register values to mutate (default: 1)
+   -  `--mutate`-inst: Specify the max. number of instructions to mutate (default: 1)
+   -  `--elite`: Elite to be kept after selection
+   -  `--elite`-equal: Sample elite individuals for crossover and selection equally, regardless of their fitness
+   -  `-r`, `--regs`: Specify the shape of working registers as a tuple of integers (default: (42,))
+   -  `-b`, `--binary`: Choose binary operations used in linear program
+   -  `-u`, `--unary`: Choose unary operations used in linear program
+   -  `-a`, `--area`: Choose area operations used in linear program
+  - Utility
+   -  `--debug`: Enable loggings DEBUG level
