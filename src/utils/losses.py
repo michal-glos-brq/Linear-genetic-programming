@@ -34,7 +34,7 @@ def cross_entropy_loss(result_registers: torch.Tensor, ground_truth_labels: torc
         torch.Tensor: Cross-entropy result.
     """
     # return torch.nan_to_num(CROSS_ENTROPY_BASE - cross_entropy(softmax(result_registers, dim=1), ground_truth_labels))
-    return torch.nan_to_num(-1 * cross_entropy(result_registers, ground_truth_labels))
+    return torch.nan_to_num(-1 * cross_entropy(softmax(result_registers, dim=1), ground_truth_labels))
 
 
 # Mapping of strings to funtions

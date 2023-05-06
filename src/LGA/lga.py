@@ -168,15 +168,15 @@ class LGA:
         makedirs(model_dir, exist_ok=True)
         makedirs(logging_dir, exist_ok=True)
 
-    def _set_operations(self, unary: List[str], binary: List[str], area: List[str]) -> None:
+    def _set_operations(self, unary: Union[List[str], None], binary: Union[List[str], None], area: Union[List[str], None]) -> None:
         """If specified - select algorithm operations"""
         # pylint: disable=global-statement
         global UNARY, BINARY, AREA
-        if unary:
+        if unary is not None:
             UNARY = [U for U in UNARY if U.__name__ in unary]
-        if binary:
+        if binary is not None:
             BINARY = [B for B in BINARY if B.__name__ in binary]
-        if area:
+        if area is not None:
             AREA = [A for A in AREA if A.__name__ in area]
 
     def _set_turboboost_properties(self) -> None:

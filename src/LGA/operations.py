@@ -78,6 +78,13 @@ def safe_square_root(*tensors: Iterable[torch.Tensor]) -> torch.Tensor:
     result = torch.sqrt(*tensors)
     return torch.nan_to_num(result, posinf=0.0, neginf=0.0)
 
+def area_min(tensor: torch.Tensor, dim: int) -> torch.Tensor:
+    """Return min. value"""
+    return torch.min(tensor, dim=dim).values
+
+def area_max(tensor: torch.Tensor, dim: int) -> torch.Tensor:
+    """Return min. value"""
+    return torch.max(tensor, dim=dim).values
 
 # Binary operations
 BINARY: List[Callable[[torch.Tensor, torch.Tensor], torch.Tensor]] = [
@@ -85,25 +92,31 @@ BINARY: List[Callable[[torch.Tensor, torch.Tensor], torch.Tensor]] = [
     torch.sub,
     torch.mul,
     safe_power,
-    torch.min,
-    torch.max,
+    # torch.min,
+    # torch.max,
     safe_division,
 ]
 
 # Unary operations (identity is added only when sampling an operation for area instruction)
 UNARY: List[Callable[[torch.Tensor], torch.Tensor]] = [
-    safe_exp,
-    safe_logarithm,
-    torch.sin,
-    torch.cos,
-    safe_tan,
-    torch.tanh,
-    safe_square_root,
+    # safe_exp,
+    # safe_logarithm,
+    # torch.sin,
+    # torch.cos,
+    # safe_tan,
+    # torch.tanh,
+    # safe_square_root,
     times_minus1,
 ]
 
 # Area operations (Reducing area to single value, unary operation has to preceed it)
-AREA: List[Callable[[], torch.Tensor]] = [torch.mean, torch.sum, torch.prod, torch.min, torch.max]
+AREA: List[Callable[[], torch.Tensor]] = [
+    torch.mean, 
+    # torch.sum, 
+    torch.prod, 
+    # area_max, 
+    # area_min
+]
 
 UNARY_OP_RATIO = len(UNARY) / (len(BINARY) + len(UNARY))
 
