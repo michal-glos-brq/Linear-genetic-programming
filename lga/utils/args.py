@@ -135,6 +135,11 @@ def validate_lga_configuration(args: Namespace) -> None:
     if args.runs <= 0:
         raise ValueError(f"Number of runs has to be higher than 0 (got {args.runs}).")
 
+    if not args.regs or any([not dimension > 1 for dimension in args.regs]):
+        raise ValueError(
+            f"Hidden registerfield should have at least 1 dimension with at least 2 registers each (got{args.regs})."
+        )
+
 def validate_program_mutation(args: Namespace) -> None:
     """Validate program mutation configuration parameters."""
     if not 0 <= args.p_cross <= 100:
