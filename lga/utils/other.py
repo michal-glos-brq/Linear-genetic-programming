@@ -1,5 +1,7 @@
 """
 This humble python module implements all other utility functions used throughout the project
+
+Author: Michal Glos (xglosm01)
 """
 
 from random import random

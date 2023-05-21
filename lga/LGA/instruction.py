@@ -1,7 +1,10 @@
 """
 This python module implements Instruction class - a single instruction in linear program
 Instruction class provides it's initialization, its' random initialization and its' transcription
+
+Author: Michal Glos (xglosm01)
 """
+
 from random import random, choice, sample, randint
 from typing import List, Union, Tuple
 

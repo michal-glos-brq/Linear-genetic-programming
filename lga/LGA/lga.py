@@ -5,6 +5,8 @@ programs through multiple generations.
 The main class, LGA, is responsible for handling the population, fitness
 evaluation, and the evolution process. The LGA class supports spawning, mutation, crossover, and elimination
 methods for evolving the programs.
+
+Author: Michal Glos (xglosm01)
 """
 
 from math import prod

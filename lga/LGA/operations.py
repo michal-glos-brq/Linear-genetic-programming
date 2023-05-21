@@ -1,5 +1,7 @@
 """
 This humble python module defines some tensor operations and groups operations into global constants according to their parity
+
+Author: Michal Glos (xglosm01)
 """
 from typing import Any, Callable, List, Iterable
 
@@ -35,7 +37,11 @@ def times_minus1(tensor: torch.Tensor) -> torch.Tensor:
     return tensor * (-1)
 
 
-### This monstrosity here is only for instruction pickle purposes
+############################################################################
+### This monstrosity here is only for instruction pickle purposes        ###
+### If you, who is reading it, know any way how to use function factory  ###
+### and still be able to pickle final linear programs please let me know ### 
+############################################################################
 
 # pylint disable=comparison-with-itself
 def safe_division(tensor1: torch.Tensor, tensor2: torch.Tensor) -> torch.Tensor:
@@ -86,36 +92,39 @@ def area_max(tensor: torch.Tensor, dim: int) -> torch.Tensor:
     """Return min. value"""
     return torch.max(tensor, dim=dim).values
 
+############################################################################
+############################################################################
+
 # Binary operations
 BINARY: List[Callable[[torch.Tensor, torch.Tensor], torch.Tensor]] = [
     torch.add,
     torch.sub,
     torch.mul,
     safe_power,
-    # torch.min,
-    # torch.max,
+    torch.min,
+    torch.max,
     safe_division,
 ]
 
 # Unary operations (identity is added only when sampling an operation for area instruction)
 UNARY: List[Callable[[torch.Tensor], torch.Tensor]] = [
-    # safe_exp,
-    # safe_logarithm,
-    # torch.sin,
-    # torch.cos,
-    # safe_tan,
-    # torch.tanh,
-    # safe_square_root,
+    safe_exp,
+    safe_logarithm,
+    torch.sin,
+    torch.cos,
+    safe_tan,
+    torch.tanh,
+    safe_square_root,
     times_minus1,
 ]
 
 # Area operations (Reducing area to single value, unary operation has to preceed it)
 AREA: List[Callable[[], torch.Tensor]] = [
     torch.mean, 
-    # torch.sum, 
+    torch.sum, 
     torch.prod, 
-    # area_max, 
-    # area_min
+    area_max, 
+    area_min
 ]
 
 UNARY_OP_RATIO = len(UNARY) / (len(BINARY) + len(UNARY))

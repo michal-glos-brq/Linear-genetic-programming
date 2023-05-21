@@ -3,6 +3,8 @@ This module provides implementation of linear program - solution to Linear Genet
 
 This class implements all necessary genetic operations: crossover, mutation and transcription.
 It also implements program evaluation.
+
+Author: Michal Glos (xglosm01)
 """
 
 import pickle

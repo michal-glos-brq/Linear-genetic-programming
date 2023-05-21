@@ -1,6 +1,8 @@
 """
 This python module provides all necessary operations for linear program mutation - 
     it's registers' initial values and instructions.
+
+Author: Michal Glos (xglosm01)
 """
 
 from random import random, choice, randint, sample

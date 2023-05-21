@@ -3,6 +3,8 @@ This Python3 module implements a wrapper around torchvision or custom created du
 
 Dataset class provides basic methods and properties to easily download or create the dataset
 as well as normalize and split data into training and evaluation sets.
+
+Author: Michal Glos (xglosm01)
 """
 
 from pprint import pformat

@@ -1,12 +1,14 @@
-"""This python module provides fitness functions and their mapping to string codes"""
+"""
+This python module provides fitness functions and their mapping to string codes
+
+Author: Michal Glos (xglosm01)
+"""
 
 from typing import Dict, Callable
 
 import torch
 from torch.nn.functional import cross_entropy, softmax
 
-# Normalizing constant for cross entropy
-CROSS_ENTROPY_BASE = 3
 
 def accuracy_score(result_registers: torch.Tensor, ground_truth_labels: torch.Tensor) -> float:
     """
@@ -33,7 +35,6 @@ def cross_entropy_loss(result_registers: torch.Tensor, ground_truth_labels: torc
     Returns:
         torch.Tensor: Cross-entropy result.
     """
-    # return torch.nan_to_num(CROSS_ENTROPY_BASE - cross_entropy(softmax(result_registers, dim=1), ground_truth_labels))
     return torch.nan_to_num(-1 * cross_entropy(softmax(result_registers, dim=1), ground_truth_labels))
 
 

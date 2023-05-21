@@ -3,7 +3,7 @@
 
 This module provides an implementation of Linear Genetic Algorithm (LGA) for image classification. It allows users to configure and run experiments using various options.
 
-#### Requires Python3.8=<
+#### Requires Python3.8+
 ##### Anaconda is the preffered way to install the application
 `pip install -r requirements.txt` 
 
@@ -37,7 +37,7 @@ CLI Options:
    -  `--mutate-regs`: Specify the max. number of register values to mutate (default: 1)
    -  `--mutate-inst`: Specify the max. number of instructions to mutate (default: 1)
    -  `--elite`: Elite to be kept after selection
-   -  `--elite`-equal: Sample elite individuals for crossover and selection equally, regardless of their fitness
+   -  `--elite-equal`: Sample elite individuals for crossover and selection equally, regardless of their fitness
    -  `-r`, `--regs`: Specify the shape of working registers as a tuple of integers (default: (42,))
    -  `-b`, `--binary`: Choose binary operations used in linear program
    -  `-u`, `--unary`: Choose unary operations used in linear program
